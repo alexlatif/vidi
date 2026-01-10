@@ -18,10 +18,15 @@ impl Plugin for DashRenderPlugin {
         app.init_resource::<TileRegistry>()
             .init_resource::<HoveredTile>()
             .init_resource::<CursorWorldPos>()
+            .init_resource::<PreviousActiveTab>()
+            .init_resource::<ScatterPoints3D>()
+            .init_resource::<AxisInfo3DStore>()
             .add_systems(Startup, (setup_global_scene, setup_unit_meshes))
             .add_systems(
                 Update,
                 (
+                    handle_tab_clicks,
+                    detect_tab_change,
                     sync_plots_to_tiles,
                     update_tile_layout,
                     auto_fit_tiles,
@@ -30,7 +35,10 @@ impl Plugin for DashRenderPlugin {
                     handle_input,
                     draw_dirty_tiles,
                     update_crosshair,
-                ),
+                    update_3d_axis_labels,
+                    update_tab_bar,
+                )
+                    .chain(),
             );
     }
 }
