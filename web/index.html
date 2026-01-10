@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Vidi Dashboard</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+        canvas { width: 100vw; height: 100vh; display: block; }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <script type="module">
+        import init, { JsDash } from './vidi.js';
+        
+        async function run() {
+            await init();
+            
+            const dash = new JsDash();
+            dash.setGrid(2, 2);
+            
+            // Add plots
+            const plot1 = dash.addPlot("Sine Wave", 0, 0);
+            const plot2 = dash.addPlot("Cosine Wave", 0, 1);
+            
+            // Generate data
+            const points = new Float32Array(200);
+            for (let i = 0; i < 100; i++) {
+                const x = i * 0.1;
+                points[i * 2] = x;
+                points[i * 2 + 1] = Math.sin(x);
+            }
+            
+            // Add trace
+            dash.addTrace(plot1, "sine", 0.0, 0.5, 1.0, points);
+            
+            // Show dashboard
+            dash.show("canvas");
+            
+            // Update data in real-time
+            setInterval(() => {
+                const newPoints = new Float32Array(200);
+                const time = Date.now() * 0.001;
+                for (let i = 0; i < 100; i++) {
+                    const x = i * 0.1;
+                    newPoints[i * 2] = x;
+                    newPoints[i * 2 + 1] = Math.sin(x + time);
+                }
+                dash.updateTrace(plot1, 0, newPoints);
+            }, 16);
+        }
+        
+        run();
+    </script>
+</body>
+</html>
