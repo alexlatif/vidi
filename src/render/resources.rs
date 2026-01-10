@@ -21,6 +21,16 @@ pub struct TileRegistry {
 #[derive(Resource, Default)]
 pub struct HoveredTile(pub Option<usize>);
 
+#[derive(Resource, Default)]
+pub struct CursorWorldPos {
+    /// World position of cursor (if over a tile)
+    pub position: Option<Vec2>,
+    /// Data coordinates (converted from world coords)
+    pub data_coords: Option<Vec2>,
+    /// Which tile the cursor is over
+    pub tile_index: Option<usize>,
+}
+
 #[derive(Resource)]
 pub struct UnitMeshes {
     pub quad: Handle<Mesh>,

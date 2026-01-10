@@ -7,6 +7,7 @@ use bevy_camera::visibility::RenderLayers;
 use bevy_camera::{
     OrthographicProjection, PerspectiveProjection, Projection, ScalingMode, Viewport,
 };
+use bevy_math::UVec2;
 use std::collections::HashSet;
 
 // #[derive(Resource, Clone, Debug)]
@@ -62,13 +63,27 @@ fn spawn_tile(
     let tile = commands
         .spawn((
             PlotTile { id, index, kind },
+            kind, // Add PlotKind as separate component for queries
             TileView::default(),
+            TileRect {
+                world_center: Vec2::ZERO,
+                world_size: Vec2::new(100.0, 100.0),
+                content: Rect::from_center_size(Vec2::ZERO, Vec2::new(70.0, 70.0)),
+                viewport: Viewport {
+                    physical_position: UVec2::ZERO,
+                    physical_size: UVec2::new(100, 100),
+                    depth: 0.0..1.0,
+                },
+            },
             Transform::default(),
+            Visibility::default(),
         ))
         .id();
 
-    // Create render root child
-    let root = commands.spawn((TileRenderRoot, Transform::default())).id();
+    // Create render root child with visibility
+    let root = commands
+        .spawn((TileRenderRoot, Transform::default(), Visibility::default()))
+        .id();
     commands.entity(tile).add_child(root);
 
     tile
@@ -122,17 +137,27 @@ pub fn update_tile_layout(
             window.height() * 0.5 - vp_y - tile_h * 0.5,
         );
 
-        rect.world_center = world_center;
-        rect.world_size = Vec2::new(tile_w, tile_h);
-        rect.content =
-            Rect::from_center_size(world_center, Vec2::new(tile_w - 30.0, tile_h - 30.0));
-        rect.viewport = Viewport {
-            physical_position: phys_pos,
-            physical_size: phys_size,
-            depth: 0.0..1.0,
-        };
+        let new_size = Vec2::new(tile_w, tile_h);
 
-        registry.dirty.push_back(tile.id);
+        // Only mark dirty if layout actually changed
+        let changed = rect.world_center != world_center
+            || rect.world_size != new_size
+            || rect.viewport.physical_position != phys_pos
+            || rect.viewport.physical_size != phys_size;
+
+        if changed {
+            rect.world_center = world_center;
+            rect.world_size = new_size;
+            rect.content =
+                Rect::from_center_size(world_center, Vec2::new(tile_w - 30.0, tile_h - 30.0));
+            rect.viewport = Viewport {
+                physical_position: phys_pos,
+                physical_size: phys_size,
+                depth: 0.0..1.0,
+            };
+
+            registry.dirty.push_back(tile.id);
+        }
     }
 }
 
@@ -253,29 +278,125 @@ pub fn update_hovered_tile(
 
 /// Handle user input
 pub fn handle_input(
-    mut tiles: Query<(&mut TileView, &mut Transform), With<PlotKind>>,
+    mut tiles: Query<(&PlotTile, &mut TileView)>,
+    mut registry: ResMut<TileRegistry>,
     hovered: Res<HoveredTile>,
     mouse: Res<ButtonInput<MouseButton>>,
     mut wheel: MessageReader<MouseWheel>,
     mut motion: MessageReader<MouseMotion>,
 ) {
-    let Some(_index) = hovered.0 else { return };
+    let Some(hovered_index) = hovered.0 else { return };
 
-    for (mut view, _) in tiles.iter_mut() {
-        // Zoom
-        for event in wheel.read() {
-            view.scale *= 1.0 + event.y * 0.1;
+    // Collect events first (they can only be read once)
+    let mut zoom_delta = 0.0;
+    for event in wheel.read() {
+        zoom_delta += event.y;
+    }
+
+    let mut pan_delta = Vec2::ZERO;
+    if mouse.pressed(MouseButton::Left) {
+        for event in motion.read() {
+            pan_delta += event.delta;
+        }
+    }
+
+    // Only modify the hovered tile
+    for (tile, mut view) in tiles.iter_mut() {
+        if tile.index != hovered_index {
+            continue;
         }
 
-        // Pan
-        if mouse.pressed(MouseButton::Left) {
-            let mut delta = Vec2::ZERO;
-            for event in motion.read() {
-                delta += event.delta;
+        let mut changed = false;
+
+        // Zoom with reduced sensitivity and limits
+        if zoom_delta != 0.0 {
+            view.scale *= 1.0 + zoom_delta * 0.05; // Reduced from 0.1
+            view.scale = view.scale.clamp(view.min_scale, view.max_scale);
+            changed = true;
+        }
+
+        // Pan (offset is in world coordinates, so don't divide by scale)
+        if pan_delta != Vec2::ZERO {
+            view.offset.x += pan_delta.x;
+            view.offset.y -= pan_delta.y;
+            changed = true;
+        }
+
+        if changed {
+            registry.dirty.push_back(tile.id);
+        }
+    }
+}
+
+/// Auto-fit tiles to their data bounds on first render
+pub fn auto_fit_tiles(
+    mut commands: Commands,
+    mut registry: ResMut<TileRegistry>,
+    mut tiles: Query<(Entity, &PlotTile, &TileRect, &mut TileView), Without<AutoFitted>>,
+    dash: Res<DashboardRes>,
+) {
+    for (entity, tile, rect, mut view) in tiles.iter_mut() {
+        // Get data bounds for this plot
+        let Some(plot) = dash.0.plots.get(tile.index) else {
+            continue;
+        };
+
+        let crate::core::Plot::Graph2D(graph) = plot else {
+            // Mark as fitted even if not 2D
+            commands.entity(entity).insert(AutoFitted);
+            continue;
+        };
+
+        // Compute data bounds from all layers
+        let mut min_x = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut min_y = f32::INFINITY;
+        let mut max_y = f32::NEG_INFINITY;
+
+        for layer in &graph.layers {
+            for pt in &layer.xy {
+                min_x = min_x.min(pt.x);
+                max_x = max_x.max(pt.x);
+                min_y = min_y.min(pt.y);
+                max_y = max_y.max(pt.y);
             }
-            view.offset.x += delta.x / view.scale;
-            view.offset.y -= delta.y / view.scale;
+            // Also consider lower_line for FillBetween geometry
+            if let Some(lower_line) = &layer.lower_line {
+                for pt in lower_line {
+                    min_x = min_x.min(pt.x);
+                    max_x = max_x.max(pt.x);
+                    min_y = min_y.min(pt.y);
+                    max_y = max_y.max(pt.y);
+                }
+            }
         }
+
+        // Skip if no valid bounds
+        if !min_x.is_finite() || !max_x.is_finite() || !min_y.is_finite() || !max_y.is_finite() {
+            commands.entity(entity).insert(AutoFitted);
+            continue;
+        }
+
+        let data_width = (max_x - min_x).max(0.01);
+        let data_height = (max_y - min_y).max(0.01);
+        let data_center = Vec2::new((min_x + max_x) * 0.5, (min_y + max_y) * 0.5);
+
+        // Compute scale to fit data in viewport with some padding
+        let padding = 0.85; // Use 85% of available space
+        let available_size = rect.world_size * padding;
+        let scale_x = available_size.x / data_width;
+        let scale_y = available_size.y / data_height;
+        let fit_scale = scale_x.min(scale_y);
+
+        // Set view to center on data with zoom limits
+        view.scale = fit_scale;
+        view.offset = -data_center * fit_scale;
+        view.min_scale = fit_scale * 0.5;  // Can zoom out to 50% of fit
+        view.max_scale = fit_scale * 4.0;  // Can zoom in to 4x of fit
+
+        // Mark as fitted and dirty
+        commands.entity(entity).insert(AutoFitted);
+        registry.dirty.push_back(tile.id);
     }
 }
 
@@ -288,6 +409,7 @@ pub fn draw_dirty_tiles(
     is_root_q: Query<(), With<TileRenderRoot>>,
     dash: Res<DashboardRes>,
     unit: Res<UnitMeshes>,
+    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     while let Some(id) = registry.dirty.pop_front() {
@@ -306,13 +428,16 @@ pub fn draw_dirty_tiles(
             for child in children.iter() {
                 if is_root_q.get(child).is_ok() {
                     // In Bevy 0.17, despawning an entity removes its descendants via relationships.
-                    commands.entity(child).despawn();
+                    // Use try_despawn to avoid errors if entity was already despawned.
+                    commands.entity(child).try_despawn();
                 }
             }
         }
 
         // 2) Create a fresh render root under the tile
-        let root = commands.spawn((TileRenderRoot, Transform::default())).id();
+        let root = commands
+            .spawn((TileRenderRoot, Transform::default(), Visibility::default()))
+            .id();
         commands.entity(tile_entity).add_child(root);
 
         // 3) Draw based on plot type
@@ -324,6 +449,17 @@ pub fn draw_dirty_tiles(
                         &mut commands,
                         root,
                         graph,
+                        rect,
+                        view,
+                        &unit,
+                        &mut meshes,
+                        &mut materials,
+                        layer.clone(),
+                    );
+                    // Draw axis ticks with value labels
+                    draw_axis_ticks(
+                        &mut commands,
+                        root,
                         rect,
                         view,
                         &unit,
@@ -370,4 +506,222 @@ fn cleanup_tile(commands: &mut Commands, registry: &mut TileRegistry, entity: En
     commands.entity(entity).despawn();
     registry.by_plot.remove(&id);
     registry.camera_of.remove(&id);
+}
+
+/// Convert world coordinates back to data coordinates
+fn world_to_data(world: Vec2, rect: &TileRect, view: &TileView) -> Vec2 {
+    (world - rect.world_center - view.offset) / view.scale
+}
+
+/// Convert data coordinates to world coordinates
+fn data_to_world_sys(data: Vec2, rect: &TileRect, view: &TileView) -> Vec2 {
+    rect.world_center + view.offset + data * view.scale
+}
+
+/// Find nearest data point on any trace in the graph
+fn find_nearest_point(
+    cursor_data: Vec2,
+    graph: &crate::core::Graph2D,
+) -> Option<Vec2> {
+    let mut nearest: Option<(Vec2, f32)> = None;
+
+    for layer in &graph.layers {
+        // For FillBetween geometry, skip - we want to snap to actual trace points
+        if matches!(layer.geometry, crate::core::Geometry2D::FillBetween) {
+            continue;
+        }
+
+        for &pt in &layer.xy {
+            let dist_sq = (pt.x - cursor_data.x).powi(2) + (pt.y - cursor_data.y).powi(2);
+            let should_update = match &nearest {
+                Some((_, best_dist)) => dist_sq < *best_dist,
+                None => true,
+            };
+            if should_update {
+                nearest = Some((pt, dist_sq));
+            }
+        }
+    }
+
+    nearest.map(|(pt, _)| pt)
+}
+
+/// Update crosshair position and visibility - snaps to nearest data point
+pub fn update_crosshair(
+    mut commands: Commands,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    tiles: Query<(&PlotTile, &TileRect, &TileView)>,
+    hovered: Res<HoveredTile>,
+    dash: Res<DashboardRes>,
+    mut cursor_pos: ResMut<CursorWorldPos>,
+    crosshairs: Query<(Entity, &Crosshair)>,
+    unit: Res<UnitMeshes>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    let Ok(window) = windows.single() else {
+        return;
+    };
+
+    // Despawn all existing crosshairs first (we recreate each frame for simplicity)
+    for (entity, _) in crosshairs.iter() {
+        commands.entity(entity).try_despawn();
+    }
+
+    let Some(cursor_screen) = window.cursor_position() else {
+        cursor_pos.position = None;
+        cursor_pos.data_coords = None;
+        cursor_pos.tile_index = None;
+        return;
+    };
+
+    // Convert screen coords to world coords
+    let world_x = cursor_screen.x - window.width() * 0.5;
+    let world_y = window.height() * 0.5 - cursor_screen.y;
+    let cursor_world = Vec2::new(world_x, world_y);
+
+    cursor_pos.position = Some(cursor_world);
+    cursor_pos.tile_index = hovered.0;
+
+    let Some(hovered_index) = hovered.0 else {
+        return;
+    };
+
+    for (tile, rect, view) in tiles.iter() {
+        if tile.index != hovered_index {
+            continue;
+        }
+
+        // Get the graph data for this tile
+        let Some(plot) = dash.0.plots.get(tile.index) else {
+            continue;
+        };
+        let crate::core::Plot::Graph2D(graph) = plot else {
+            continue;
+        };
+
+        // Convert cursor to data coordinates
+        let cursor_data = world_to_data(cursor_world, rect, view);
+
+        // Find nearest data point
+        let snap_data = find_nearest_point(cursor_data, graph).unwrap_or(cursor_data);
+        let snap_world = data_to_world_sys(snap_data, rect, view);
+
+        cursor_pos.data_coords = Some(snap_data);
+
+        // Spawn crosshair with dashed lines
+        spawn_dashed_crosshair(
+            &mut commands,
+            tile.index,
+            rect,
+            snap_world,
+            snap_data,
+            &unit,
+            &mut materials,
+            RenderLayers::layer(tile.index % 32),
+        );
+    }
+}
+
+fn spawn_dashed_crosshair(
+    commands: &mut Commands,
+    tile_index: usize,
+    rect: &TileRect,
+    snap_world: Vec2,
+    snap_data: Vec2,
+    unit: &UnitMeshes,
+    materials: &mut Assets<ColorMaterial>,
+    layers: RenderLayers,
+) {
+    let crosshair_mat = materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.5)));
+    let line_thickness = 1.0; // Thin but visible
+    let dash_length = 4.0;
+    let gap_length = 3.0;
+
+    commands
+        .spawn((
+            Crosshair { tile_index },
+            Transform::default(),
+            Visibility::Visible,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
+        ))
+        .with_children(|parent| {
+            // Dashed vertical line
+            let v_start = rect.world_center.y - rect.world_size.y * 0.5;
+            let v_end = rect.world_center.y + rect.world_size.y * 0.5;
+            let mut y = v_start;
+            while y < v_end {
+                let dash_end = (y + dash_length).min(v_end);
+                let dash_center_y = (y + dash_end) / 2.0;
+                let dash_height = dash_end - y;
+
+                parent.spawn((
+                    Mesh2d(unit.quad.clone()),
+                    MeshMaterial2d(crosshair_mat.clone()),
+                    Transform {
+                        translation: Vec3::new(snap_world.x, dash_center_y, 5.0),
+                        scale: Vec3::new(line_thickness, dash_height, 1.0),
+                        ..default()
+                    },
+                    CrosshairVLine,
+                    layers.clone(),
+                ));
+
+                y += dash_length + gap_length;
+            }
+
+            // Dashed horizontal line
+            let h_start = rect.world_center.x - rect.world_size.x * 0.5;
+            let h_end = rect.world_center.x + rect.world_size.x * 0.5;
+            let mut x = h_start;
+            while x < h_end {
+                let dash_end = (x + dash_length).min(h_end);
+                let dash_center_x = (x + dash_end) / 2.0;
+                let dash_width = dash_end - x;
+
+                parent.spawn((
+                    Mesh2d(unit.quad.clone()),
+                    MeshMaterial2d(crosshair_mat.clone()),
+                    Transform {
+                        translation: Vec3::new(dash_center_x, snap_world.y, 5.0),
+                        scale: Vec3::new(dash_width, line_thickness, 1.0),
+                        ..default()
+                    },
+                    CrosshairHLine,
+                    layers.clone(),
+                ));
+
+                x += dash_length + gap_length;
+            }
+
+            // Small circle marker at intersection (snap point)
+            let point_mat = materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.95)));
+            parent.spawn((
+                Mesh2d(unit.quad.clone()),
+                MeshMaterial2d(point_mat),
+                Transform {
+                    translation: Vec3::new(snap_world.x, snap_world.y, 5.5),
+                    scale: Vec3::splat(5.0),
+                    ..default()
+                },
+                layers.clone(),
+            ));
+
+            // Coordinate text near the snapped point (offset to avoid overlap)
+            parent.spawn((
+                Text2d::new(format!("({:.2}, {:.2})", snap_data.x, snap_data.y)),
+                TextFont {
+                    font_size: 12.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(1.0, 1.0, 1.0, 0.9)),
+                Transform::from_translation(Vec3::new(
+                    snap_world.x + 10.0,
+                    snap_world.y + 12.0,
+                    6.0,
+                )),
+                CrosshairCoordText,
+                layers,
+            ));
+        });
 }

@@ -110,6 +110,40 @@ impl Plot2DBuilder {
     pub fn stems(self, xy: Vec<Vec2>, style: impl Into<Option<Style>>) -> Self {
         self.push_layer(Geometry2D::Stems, xy, style.into())
     }
+
+    /// Set the X-axis label
+    pub fn x_label(mut self, label: impl Into<String>) -> Self {
+        self.graph.x_label = Some(label.into());
+        self
+    }
+
+    /// Set the Y-axis label
+    pub fn y_label(mut self, label: impl Into<String>) -> Self {
+        self.graph.y_label = Some(label.into());
+        self
+    }
+
+    /// Fill between two lines (for confidence intervals, ranges, etc.)
+    ///
+    /// # Arguments
+    /// * `upper` - Upper bound line as Vec<Vec2>
+    /// * `lower` - Lower bound line as Vec<Vec2>
+    /// * `style` - Style for the fill (opacity controls transparency)
+    pub fn fill_between(
+        mut self,
+        upper: Vec<Vec2>,
+        lower: Vec<Vec2>,
+        style: impl Into<Option<Style>>,
+    ) -> Self {
+        let mut layer = Layer2D::new(Geometry2D::FillBetween, upper);
+        layer.lower_line = Some(lower);
+
+        if let Some(st) = style.into() {
+            layer.style = st;
+        }
+        self.graph.layers.push(layer);
+        self
+    }
 }
 
 // Allow passing &Style into the `impl Into<Option<Style>>` slot.

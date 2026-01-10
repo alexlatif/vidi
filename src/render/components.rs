@@ -27,10 +27,23 @@ pub enum PlotKind {
     Placeholder,
 }
 
-#[derive(Component, Clone, Copy, Default)]
+#[derive(Component, Clone, Copy)]
 pub struct TileView {
     pub offset: Vec2,
     pub scale: f32,
+    pub min_scale: f32,
+    pub max_scale: f32,
+}
+
+impl Default for TileView {
+    fn default() -> Self {
+        Self {
+            offset: Vec2::ZERO,
+            scale: 1.0,
+            min_scale: 0.1,
+            max_scale: 100.0,
+        }
+    }
 }
 
 #[derive(Component)]
@@ -46,3 +59,25 @@ pub struct TileRenderRoot;
 
 #[derive(Component)]
 pub struct TileCamera;
+
+/// Marker for crosshair parent entity
+#[derive(Component)]
+pub struct Crosshair {
+    pub tile_index: usize,
+}
+
+/// Marker for crosshair horizontal line
+#[derive(Component)]
+pub struct CrosshairHLine;
+
+/// Marker for crosshair vertical line
+#[derive(Component)]
+pub struct CrosshairVLine;
+
+/// Marker for coordinate text display
+#[derive(Component)]
+pub struct CrosshairCoordText;
+
+/// Marker to track if a tile has been auto-fitted to its data
+#[derive(Component)]
+pub struct AutoFitted;

@@ -131,6 +131,8 @@ pub struct Graph2D {
     pub x_scale: Scale,
     pub y_scale: Scale,
     pub interaction: Interaction,
+    pub x_label: Option<String>,
+    pub y_label: Option<String>,
 }
 
 impl Graph2D {
@@ -141,6 +143,8 @@ impl Graph2D {
             x_scale: Scale::default(),
             y_scale: Scale::default(),
             interaction: Interaction::default(),
+            x_label: None,
+            y_label: None,
         }
     }
 
@@ -164,6 +168,19 @@ impl Graph2D {
                 max[1] = max[1].max(p.y);
                 any = true;
             }
+            // Also consider lower_line for FillBetween geometry
+            if let Some(lower) = &l.lower_line {
+                for p in lower {
+                    if !p.x.is_finite() || !p.y.is_finite() {
+                        continue;
+                    }
+                    min[0] = min[0].min(p.x);
+                    min[1] = min[1].min(p.y);
+                    max[0] = max[0].max(p.x);
+                    max[1] = max[1].max(p.y);
+                    any = true;
+                }
+            }
         }
         any.then_some((min, max))
     }
@@ -174,8 +191,9 @@ pub enum Geometry2D {
     Line,
     Points,
     Area,
-    Bars,  // interpret xy as (x, y) heights
-    Stems, // vertical from baseline to y
+    Bars,       // interpret xy as (x, y) heights
+    Stems,      // vertical from baseline to y
+    FillBetween, // fills area between two lines (xy = upper, lower_line = lower)
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -183,6 +201,8 @@ pub struct Layer2D {
     pub geometry: Geometry2D,
     pub xy: Vec<Vec2>,
     pub style: Style,
+    /// For FillBetween geometry: the lower line (xy contains the upper line)
+    pub lower_line: Option<Vec<Vec2>>,
 }
 
 impl Layer2D {
@@ -191,6 +211,7 @@ impl Layer2D {
             geometry,
             xy,
             style: Style::default(),
+            lower_line: None,
         }
     }
 }
