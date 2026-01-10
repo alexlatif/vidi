@@ -467,6 +467,42 @@ pub fn draw_dirty_tiles(
                         layer,
                     );
                 }
+                crate::core::Plot::Distribution(dist) => {
+                    match dist {
+                        crate::core::Distribution::Histogram { values, bins, style, x_label, y_label } => {
+                            draw_histogram(
+                                &mut commands,
+                                root,
+                                values,
+                                *bins,
+                                style,
+                                x_label.as_deref(),
+                                y_label.as_deref(),
+                                rect,
+                                view,
+                                &unit,
+                                &mut materials,
+                                layer,
+                            );
+                        }
+                        crate::core::Distribution::Pdf { values, style, x_label, y_label } => {
+                            draw_pdf(
+                                &mut commands,
+                                root,
+                                values,
+                                style,
+                                x_label.as_deref(),
+                                y_label.as_deref(),
+                                rect,
+                                view,
+                                &unit,
+                                &mut meshes,
+                                &mut materials,
+                                layer,
+                            );
+                        }
+                    }
+                }
                 _ => {
                     draw_placeholder(&mut commands, root, rect, &unit, &mut materials, layer);
                 }
@@ -595,30 +631,45 @@ pub fn update_crosshair(
         let Some(plot) = dash.0.plots.get(tile.index) else {
             continue;
         };
-        let crate::core::Plot::Graph2D(graph) = plot else {
-            continue;
-        };
 
-        // Convert cursor to data coordinates
-        let cursor_data = world_to_data(cursor_world, rect, view);
+        match plot {
+            crate::core::Plot::Graph2D(graph) => {
+                // Convert cursor to data coordinates
+                let cursor_data = world_to_data(cursor_world, rect, view);
 
-        // Find nearest data point
-        let snap_data = find_nearest_point(cursor_data, graph).unwrap_or(cursor_data);
-        let snap_world = data_to_world_sys(snap_data, rect, view);
+                // Find nearest data point
+                let snap_data = find_nearest_point(cursor_data, graph).unwrap_or(cursor_data);
+                let snap_world = data_to_world_sys(snap_data, rect, view);
 
-        cursor_pos.data_coords = Some(snap_data);
+                cursor_pos.data_coords = Some(snap_data);
 
-        // Spawn crosshair with dashed lines
-        spawn_dashed_crosshair(
-            &mut commands,
-            tile.index,
-            rect,
-            snap_world,
-            snap_data,
-            &unit,
-            &mut materials,
-            RenderLayers::layer(tile.index % 32),
-        );
+                // Spawn crosshair with dashed lines
+                spawn_dashed_crosshair(
+                    &mut commands,
+                    tile.index,
+                    rect,
+                    snap_world,
+                    snap_data,
+                    &unit,
+                    &mut materials,
+                    RenderLayers::layer(tile.index % 32),
+                );
+            }
+            crate::core::Plot::Distribution(dist) => {
+                // Spawn distribution crosshair with tooltip
+                spawn_distribution_crosshair(
+                    &mut commands,
+                    tile.index,
+                    rect,
+                    cursor_world,
+                    dist,
+                    &unit,
+                    &mut materials,
+                    RenderLayers::layer(tile.index % 32),
+                );
+            }
+            _ => {}
+        }
     }
 }
 
@@ -724,4 +775,265 @@ fn spawn_dashed_crosshair(
                 layers,
             ));
         });
+}
+
+fn spawn_distribution_crosshair(
+    commands: &mut Commands,
+    tile_index: usize,
+    rect: &TileRect,
+    cursor_world: Vec2,
+    dist: &crate::core::Distribution,
+    unit: &UnitMeshes,
+    materials: &mut Assets<ColorMaterial>,
+    layers: RenderLayers,
+) {
+    // Calculate padded area (must match draw_histogram/draw_pdf)
+    let padding_left = 0.15;
+    let padding_right = 0.08;
+    let padding_bottom = 0.18;
+    let padding_top = 0.08;
+
+    let usable_width = rect.world_size.x * (1.0 - padding_left - padding_right);
+    let usable_height = rect.world_size.y * (1.0 - padding_bottom - padding_top);
+    let left_x = rect.world_center.x - rect.world_size.x * 0.5 + rect.world_size.x * padding_left;
+    let bottom_y = rect.world_center.y - rect.world_size.y * 0.5 + rect.world_size.y * padding_bottom;
+    let right_x = left_x + usable_width;
+    let top_y = bottom_y + usable_height;
+
+    // Check if cursor is within the plot area
+    if cursor_world.x < left_x || cursor_world.x > right_x
+        || cursor_world.y < bottom_y || cursor_world.y > top_y
+    {
+        return;
+    }
+
+    let crosshair_mat = materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.5)));
+    let highlight_mat = materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.3)));
+    let line_thickness = 1.0;
+    let dash_length = 4.0;
+    let gap_length = 3.0;
+
+    match dist {
+        crate::core::Distribution::Histogram { values, bins, .. } => {
+            // Histogram: just bar highlight + tooltip, no crosshair lines
+            if values.is_empty() || *bins == 0 {
+                return;
+            }
+
+            let min_val = values.iter().cloned().fold(f32::INFINITY, f32::min);
+            let max_val = values.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            if !min_val.is_finite() || !max_val.is_finite() || min_val >= max_val {
+                return;
+            }
+
+            let bin_width_data = (max_val - min_val) / *bins as f32;
+            let bar_width_world = usable_width / *bins as f32;
+
+            // Which bar is the cursor over?
+            let bar_index = ((cursor_world.x - left_x) / bar_width_world).floor() as usize;
+            let bar_index = bar_index.min(*bins - 1);
+
+            // Count values in this bin
+            let bin_start = min_val + bar_index as f32 * bin_width_data;
+            let bin_end = bin_start + bin_width_data;
+            let count = values.iter().filter(|&&v| {
+                if bar_index == *bins - 1 {
+                    v >= bin_start && v <= bin_end
+                } else {
+                    v >= bin_start && v < bin_end
+                }
+            }).count();
+
+            // Calculate bar geometry for highlight
+            let bar_center_x = left_x + (bar_index as f32 + 0.5) * bar_width_world;
+            let max_count = {
+                let mut counts = vec![0usize; *bins];
+                for &v in values {
+                    let idx = ((v - min_val) / bin_width_data).floor() as usize;
+                    let idx = idx.min(*bins - 1);
+                    counts[idx] += 1;
+                }
+                counts.iter().cloned().max().unwrap_or(1) as f32
+            };
+            let bar_height = (count as f32 / max_count) * usable_height;
+
+            let tooltip_text = format!("[{:.2}, {:.2})\nCount: {}", bin_start, bin_end, count);
+
+            commands
+                .spawn((
+                    Crosshair { tile_index },
+                    Transform::default(),
+                    Visibility::Visible,
+                    InheritedVisibility::default(),
+                    ViewVisibility::default(),
+                ))
+                .with_children(|parent| {
+                    // Highlight bar overlay
+                    parent.spawn((
+                        Mesh2d(unit.quad.clone()),
+                        MeshMaterial2d(highlight_mat),
+                        Transform {
+                            translation: Vec3::new(bar_center_x, bottom_y + bar_height * 0.5, 4.0),
+                            scale: Vec3::new(bar_width_world * 0.9, bar_height, 1.0),
+                            ..default()
+                        },
+                        layers.clone(),
+                    ));
+
+                    // Tooltip text
+                    parent.spawn((
+                        Text2d::new(tooltip_text),
+                        TextFont {
+                            font_size: 11.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgba(1.0, 1.0, 1.0, 0.95)),
+                        Transform::from_translation(Vec3::new(
+                            bar_center_x + 15.0,
+                            bottom_y + bar_height + 20.0,
+                            6.0,
+                        )),
+                        CrosshairCoordText,
+                        layers,
+                    ));
+                });
+        }
+        crate::core::Distribution::Pdf { values, .. } => {
+            // PDF: crosshair snapped to curve
+            if values.is_empty() {
+                return;
+            }
+
+            let min_val = values.iter().cloned().fold(f32::INFINITY, f32::min);
+            let max_val = values.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            if !min_val.is_finite() || !max_val.is_finite() || min_val >= max_val {
+                return;
+            }
+
+            // Convert cursor x to data value
+            let t = (cursor_world.x - left_x) / usable_width;
+            let range = max_val - min_val;
+            let x_min = min_val - range * 0.1;
+            let x_max = max_val + range * 0.1;
+            let data_x = x_min + t * (x_max - x_min);
+
+            // Compute KDE at this point
+            let n = values.len() as f32;
+            let std_dev = {
+                let mean = values.iter().sum::<f32>() / n;
+                let variance = values.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / n;
+                variance.sqrt()
+            };
+            let bandwidth = (1.06 * std_dev * n.powf(-0.2)).max(0.01);
+
+            let density: f32 = values.iter().map(|&xi| {
+                let u = (data_x - xi) / bandwidth;
+                (-0.5 * u * u).exp() / (2.506628 * bandwidth)
+            }).sum::<f32>() / n;
+
+            // Compute max density for normalization
+            let max_density = {
+                let mut max_d = 0.0f32;
+                for i in 0..100 {
+                    let x = x_min + (i as f32 / 99.0) * (x_max - x_min);
+                    let d: f32 = values.iter().map(|&xi| {
+                        let u = (x - xi) / bandwidth;
+                        (-0.5 * u * u).exp() / (2.506628 * bandwidth)
+                    }).sum::<f32>() / n;
+                    max_d = max_d.max(d);
+                }
+                max_d
+            };
+
+            // Snap to curve - y position on the PDF curve
+            let snap_y = bottom_y + (density / max_density) * usable_height;
+            let snap_world = Vec2::new(cursor_world.x, snap_y);
+
+            let tooltip_text = format!("Value: {:.2}\nDensity: {:.4}", data_x, density);
+
+            commands
+                .spawn((
+                    Crosshair { tile_index },
+                    Transform::default(),
+                    Visibility::Visible,
+                    InheritedVisibility::default(),
+                    ViewVisibility::default(),
+                ))
+                .with_children(|parent| {
+                    // Dashed vertical line
+                    let mut y = bottom_y;
+                    while y < snap_y {
+                        let dash_end = (y + dash_length).min(snap_y);
+                        let dash_center_y = (y + dash_end) / 2.0;
+                        let dash_height = dash_end - y;
+
+                        parent.spawn((
+                            Mesh2d(unit.quad.clone()),
+                            MeshMaterial2d(crosshair_mat.clone()),
+                            Transform {
+                                translation: Vec3::new(cursor_world.x, dash_center_y, 5.0),
+                                scale: Vec3::new(line_thickness, dash_height, 1.0),
+                                ..default()
+                            },
+                            CrosshairVLine,
+                            layers.clone(),
+                        ));
+
+                        y += dash_length + gap_length;
+                    }
+
+                    // Dashed horizontal line to left edge
+                    let mut x = left_x;
+                    while x < cursor_world.x {
+                        let dash_end = (x + dash_length).min(cursor_world.x);
+                        let dash_center_x = (x + dash_end) / 2.0;
+                        let dash_width = dash_end - x;
+
+                        parent.spawn((
+                            Mesh2d(unit.quad.clone()),
+                            MeshMaterial2d(crosshair_mat.clone()),
+                            Transform {
+                                translation: Vec3::new(dash_center_x, snap_y, 5.0),
+                                scale: Vec3::new(dash_width, line_thickness, 1.0),
+                                ..default()
+                            },
+                            CrosshairHLine,
+                            layers.clone(),
+                        ));
+
+                        x += dash_length + gap_length;
+                    }
+
+                    // Point marker at curve intersection
+                    let point_mat = materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.95)));
+                    parent.spawn((
+                        Mesh2d(unit.quad.clone()),
+                        MeshMaterial2d(point_mat),
+                        Transform {
+                            translation: Vec3::new(snap_world.x, snap_world.y, 5.5),
+                            scale: Vec3::splat(6.0),
+                            ..default()
+                        },
+                        layers.clone(),
+                    ));
+
+                    // Tooltip text
+                    parent.spawn((
+                        Text2d::new(tooltip_text),
+                        TextFont {
+                            font_size: 11.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgba(1.0, 1.0, 1.0, 0.95)),
+                        Transform::from_translation(Vec3::new(
+                            snap_world.x + 15.0,
+                            snap_world.y + 15.0,
+                            6.0,
+                        )),
+                        CrosshairCoordText,
+                        layers,
+                    ));
+                });
+        }
+    }
 }

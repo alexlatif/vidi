@@ -216,14 +216,30 @@ impl DistBuilder {
                 values: vec![],
                 bins: 30,
                 style: Style::default(),
+                x_label: None,
+                y_label: None,
             },
         }
     }
 
     pub fn histogram(mut self, values: Vec<f32>) -> Self {
-        if let Distribution::Histogram { values: v, .. } = &mut self.dist {
-            *v = values;
-        }
+        self.dist = Distribution::Histogram {
+            values,
+            bins: 30,
+            style: Style::default(),
+            x_label: None,
+            y_label: None,
+        };
+        self
+    }
+
+    pub fn pdf(mut self, values: Vec<f32>) -> Self {
+        self.dist = Distribution::Pdf {
+            values,
+            style: Style::default(),
+            x_label: None,
+            y_label: None,
+        };
         self
     }
 
@@ -234,9 +250,26 @@ impl DistBuilder {
         self
     }
 
-    pub fn style(mut self, s: &Style) -> Self {
-        if let Distribution::Histogram { style, .. } = &mut self.dist {
-            *style = *s;
+    pub fn style(mut self, s: Style) -> Self {
+        match &mut self.dist {
+            Distribution::Histogram { style, .. } => *style = s,
+            Distribution::Pdf { style, .. } => *style = s,
+        }
+        self
+    }
+
+    pub fn x_label(mut self, label: impl Into<String>) -> Self {
+        match &mut self.dist {
+            Distribution::Histogram { x_label, .. } => *x_label = Some(label.into()),
+            Distribution::Pdf { x_label, .. } => *x_label = Some(label.into()),
+        }
+        self
+    }
+
+    pub fn y_label(mut self, label: impl Into<String>) -> Self {
+        match &mut self.dist {
+            Distribution::Histogram { y_label, .. } => *y_label = Some(label.into()),
+            Distribution::Pdf { y_label, .. } => *y_label = Some(label.into()),
         }
         self
     }

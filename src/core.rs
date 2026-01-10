@@ -255,12 +255,19 @@ pub enum Distribution {
         values: Vec<f32>,
         bins: usize,
         style: Style,
+        x_label: Option<String>,
+        y_label: Option<String>,
     },
-    // KDE { bandwidth: f64 },
+    Pdf {
+        values: Vec<f32>,
+        style: Style,
+        x_label: Option<String>,
+        y_label: Option<String>,
+    },
     // Box,
     // Violin,
     // ECDF,
-    // leave room for KDE/Box/Violin later; lowering can expand
+    // leave room for Box/Violin later; lowering can expand
 }
 
 // Field plots (heatmap, image, tensors)

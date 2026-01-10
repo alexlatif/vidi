@@ -486,3 +486,436 @@ pub fn draw_axis_ticks(
         });
     }
 }
+
+/// Draw a histogram
+pub fn draw_histogram(
+    commands: &mut Commands,
+    root: Entity,
+    values: &[f32],
+    bins: usize,
+    style: &crate::core::Style,
+    x_label: Option<&str>,
+    y_label: Option<&str>,
+    rect: &TileRect,
+    _view: &TileView,
+    unit: &UnitMeshes,
+    materials: &mut Assets<ColorMaterial>,
+    layers: RenderLayers,
+) {
+    if values.is_empty() || bins == 0 {
+        return;
+    }
+
+    // Compute histogram bins
+    let min_val = values.iter().cloned().fold(f32::INFINITY, f32::min);
+    let max_val = values.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+
+    if !min_val.is_finite() || !max_val.is_finite() || min_val >= max_val {
+        return;
+    }
+
+    let bin_width = (max_val - min_val) / bins as f32;
+    let mut counts = vec![0usize; bins];
+
+    for &v in values {
+        let idx = ((v - min_val) / bin_width).floor() as usize;
+        let idx = idx.min(bins - 1);
+        counts[idx] += 1;
+    }
+
+    let max_count = counts.iter().cloned().max().unwrap_or(1) as f32;
+
+    // Draw border
+    let border_mat = materials.add(ColorMaterial::from(Color::srgb(0.3, 0.3, 0.4)));
+    let border_thickness = 2.0;
+    let layers_border = layers.clone();
+
+    commands.entity(root).with_children(|parent| {
+        for (dx, dy) in [(0.0, 0.5), (0.0, -0.5), (-0.5, 0.0), (0.5, 0.0)] {
+            parent.spawn((
+                Mesh2d(unit.quad.clone()),
+                MeshMaterial2d(border_mat.clone()),
+                Transform {
+                    translation: Vec3::new(
+                        rect.world_center.x + dx * rect.world_size.x,
+                        rect.world_center.y + dy * rect.world_size.y,
+                        1.0,
+                    ),
+                    scale: if dx == 0.0 {
+                        Vec3::new(rect.world_size.x, border_thickness, 1.0)
+                    } else {
+                        Vec3::new(border_thickness, rect.world_size.y, 1.0)
+                    },
+                    ..default()
+                },
+                layers_border.clone(),
+            ));
+        }
+    });
+
+    // Increased padding for labels
+    let padding_left = 0.15;
+    let padding_right = 0.08;
+    let padding_bottom = 0.18;
+    let padding_top = 0.08;
+
+    let usable_width = rect.world_size.x * (1.0 - padding_left - padding_right);
+    let usable_height = rect.world_size.y * (1.0 - padding_bottom - padding_top);
+
+    let left_x = rect.world_center.x - rect.world_size.x * 0.5 + rect.world_size.x * padding_left;
+    let bottom_y = rect.world_center.y - rect.world_size.y * 0.5 + rect.world_size.y * padding_bottom;
+
+    let bar_width_world = usable_width / bins as f32;
+    let gap = bar_width_world * 0.1;
+
+    // Draw bars
+    let bar_color = Color::srgba(style.color.r, style.color.g, style.color.b, style.opacity);
+    let bar_mat = materials.add(ColorMaterial::from(bar_color));
+
+    for (i, &count) in counts.iter().enumerate() {
+        if count == 0 {
+            continue;
+        }
+
+        let bar_height = (count as f32 / max_count) * usable_height;
+        let bar_x = left_x + (i as f32 + 0.5) * bar_width_world;
+        let bar_y = bottom_y + bar_height * 0.5;
+
+        let layers_bar = layers.clone();
+        commands.entity(root).with_children(|parent| {
+            parent.spawn((
+                Mesh2d(unit.quad.clone()),
+                MeshMaterial2d(bar_mat.clone()),
+                Transform {
+                    translation: Vec3::new(bar_x, bar_y, 0.0),
+                    scale: Vec3::new(bar_width_world - gap, bar_height, 1.0),
+                    ..default()
+                },
+                layers_bar,
+            ));
+        });
+    }
+
+    // Draw x-axis tick labels
+    let label_count = bins.min(8);
+    let step = bins / label_count;
+    for i in (0..=bins).step_by(step.max(1)) {
+        let val = min_val + i as f32 * bin_width;
+        let x = left_x + (i as f32 / bins as f32) * usable_width;
+        let layers_label = layers.clone();
+
+        commands.entity(root).with_children(|parent| {
+            parent.spawn((
+                Text2d::new(format!("{:.1}", val)),
+                TextFont {
+                    font_size: 9.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.7, 0.7, 0.7, 0.9)),
+                Transform::from_translation(Vec3::new(x, bottom_y - 14.0, 2.0)),
+                layers_label,
+            ));
+        });
+    }
+
+    // Draw axis labels
+    let x_label_text = x_label.unwrap_or("Value");
+    let y_label_text = y_label.unwrap_or("Frequency");
+
+    let layers_axis = layers.clone();
+    commands.entity(root).with_children(|parent| {
+        // X-axis label
+        parent.spawn((
+            Text2d::new(x_label_text),
+            TextFont {
+                font_size: 11.0,
+                ..default()
+            },
+            TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
+            Transform::from_translation(Vec3::new(
+                left_x + usable_width * 0.5,
+                rect.world_center.y - rect.world_size.y * 0.5 + 14.0,
+                2.0,
+            )),
+            layers_axis.clone(),
+        ));
+
+        // Y-axis label
+        parent.spawn((
+            Text2d::new(y_label_text),
+            TextFont {
+                font_size: 11.0,
+                ..default()
+            },
+            TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
+            Transform {
+                translation: Vec3::new(
+                    rect.world_center.x - rect.world_size.x * 0.5 + 14.0,
+                    bottom_y + usable_height * 0.5,
+                    2.0,
+                ),
+                rotation: Quat::from_rotation_z(std::f32::consts::FRAC_PI_2),
+                ..default()
+            },
+            layers_axis,
+        ));
+    });
+}
+
+/// Draw a probability density function (smooth curve)
+pub fn draw_pdf(
+    commands: &mut Commands,
+    root: Entity,
+    values: &[f32],
+    style: &crate::core::Style,
+    x_label: Option<&str>,
+    y_label: Option<&str>,
+    rect: &TileRect,
+    _view: &TileView,
+    unit: &UnitMeshes,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<ColorMaterial>,
+    layers: RenderLayers,
+) {
+    if values.is_empty() {
+        return;
+    }
+
+    // Compute KDE (Kernel Density Estimation)
+    let min_val = values.iter().cloned().fold(f32::INFINITY, f32::min);
+    let max_val = values.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+
+    if !min_val.is_finite() || !max_val.is_finite() || min_val >= max_val {
+        return;
+    }
+
+    // Silverman's rule of thumb for bandwidth
+    let n = values.len() as f32;
+    let std_dev = {
+        let mean = values.iter().sum::<f32>() / n;
+        let variance = values.iter().map(|x| (x - mean).powi(2)).sum::<f32>() / n;
+        variance.sqrt()
+    };
+    let bandwidth = 1.06 * std_dev * n.powf(-0.2);
+    let bandwidth = bandwidth.max(0.01); // Minimum bandwidth
+
+    // Sample the KDE at many points
+    let n_samples = 200;
+    let range = max_val - min_val;
+    let x_min = min_val - range * 0.1;
+    let x_max = max_val + range * 0.1;
+
+    let mut kde_points: Vec<(f32, f32)> = Vec::with_capacity(n_samples);
+    let mut max_density = 0.0f32;
+
+    for i in 0..n_samples {
+        let x = x_min + (i as f32 / (n_samples - 1) as f32) * (x_max - x_min);
+
+        // Gaussian kernel
+        let density: f32 = values.iter().map(|&xi| {
+            let u = (x - xi) / bandwidth;
+            (-0.5 * u * u).exp() / (2.506628 * bandwidth) // 2.506628 ≈ sqrt(2π)
+        }).sum::<f32>() / n;
+
+        kde_points.push((x, density));
+        max_density = max_density.max(density);
+    }
+
+    if max_density <= 0.0 {
+        return;
+    }
+
+    // Draw border
+    let border_mat = materials.add(ColorMaterial::from(Color::srgb(0.3, 0.3, 0.4)));
+    let border_thickness = 2.0;
+    let layers_border = layers.clone();
+
+    commands.entity(root).with_children(|parent| {
+        for (dx, dy) in [(0.0, 0.5), (0.0, -0.5), (-0.5, 0.0), (0.5, 0.0)] {
+            parent.spawn((
+                Mesh2d(unit.quad.clone()),
+                MeshMaterial2d(border_mat.clone()),
+                Transform {
+                    translation: Vec3::new(
+                        rect.world_center.x + dx * rect.world_size.x,
+                        rect.world_center.y + dy * rect.world_size.y,
+                        1.0,
+                    ),
+                    scale: if dx == 0.0 {
+                        Vec3::new(rect.world_size.x, border_thickness, 1.0)
+                    } else {
+                        Vec3::new(border_thickness, rect.world_size.y, 1.0)
+                    },
+                    ..default()
+                },
+                layers_border.clone(),
+            ));
+        }
+    });
+
+    // Convert KDE to world coordinates with better padding
+    let padding_left = 0.15;
+    let padding_right = 0.08;
+    let padding_bottom = 0.18;
+    let padding_top = 0.08;
+
+    let usable_width = rect.world_size.x * (1.0 - padding_left - padding_right);
+    let usable_height = rect.world_size.y * (1.0 - padding_bottom - padding_top);
+    let left_x = rect.world_center.x - rect.world_size.x * 0.5 + rect.world_size.x * padding_left;
+    let bottom_y = rect.world_center.y - rect.world_size.y * 0.5 + rect.world_size.y * padding_bottom;
+
+    // Build the upper curve (the PDF line)
+    let upper: Vec<Vec2> = kde_points.iter().map(|&(x, y)| {
+        let wx = left_x + ((x - x_min) / (x_max - x_min)) * usable_width;
+        let wy = bottom_y + (y / max_density) * usable_height;
+        Vec2::new(wx, wy)
+    }).collect();
+
+    // Build the lower curve (baseline at y=0)
+    let lower: Vec<Vec2> = kde_points.iter().map(|&(x, _)| {
+        let wx = left_x + ((x - x_min) / (x_max - x_min)) * usable_width;
+        Vec2::new(wx, bottom_y)
+    }).collect();
+
+    // Draw filled area under curve
+    let n = upper.len();
+    if n >= 2 {
+        let mut positions: Vec<[f32; 3]> = Vec::with_capacity(n * 2);
+        let mut indices: Vec<u32> = Vec::with_capacity((n - 1) * 6);
+
+        for pt in &upper {
+            positions.push([pt.x, pt.y, 0.0]);
+        }
+        for pt in &lower {
+            positions.push([pt.x, pt.y, 0.0]);
+        }
+
+        for i in 0..(n - 1) {
+            let u0 = i as u32;
+            let u1 = (i + 1) as u32;
+            let l0 = (n + i) as u32;
+            let l1 = (n + i + 1) as u32;
+            indices.extend_from_slice(&[u0, l1, l0]);
+            indices.extend_from_slice(&[u0, u1, l1]);
+        }
+
+        let vertex_count = positions.len();
+        let normals: Vec<[f32; 3]> = vec![[0.0, 0.0, 1.0]; vertex_count];
+        let uvs: Vec<[f32; 2]> = vec![[0.0, 0.0]; vertex_count];
+
+        let mut mesh = Mesh::new(
+            PrimitiveTopology::TriangleList,
+            RenderAssetUsages::RENDER_WORLD,
+        );
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+        mesh.insert_indices(Indices::U32(indices));
+
+        let fill_mesh = meshes.add(mesh);
+        let fill_color = Color::srgba(style.color.r, style.color.g, style.color.b, style.opacity * 0.4);
+        let fill_mat = materials.add(ColorMaterial::from(fill_color));
+
+        let layers_fill = layers.clone();
+        commands.entity(root).with_children(|parent| {
+            parent.spawn((
+                Mesh2d(fill_mesh),
+                MeshMaterial2d(fill_mat),
+                Transform::default(),
+                layers_fill,
+            ));
+        });
+    }
+
+    // Draw the PDF line on top
+    let line_color = Color::srgba(style.color.r, style.color.g, style.color.b, style.opacity);
+    let line_mat = materials.add(ColorMaterial::from(line_color));
+
+    for window in upper.windows(2) {
+        let a = window[0];
+        let b = window[1];
+        let length = a.distance(b);
+        let angle = (b.y - a.y).atan2(b.x - a.x);
+
+        let layers_line = layers.clone();
+        commands.entity(root).with_children(|parent| {
+            parent.spawn((
+                Mesh2d(unit.quad.clone()),
+                MeshMaterial2d(line_mat.clone()),
+                Transform {
+                    translation: ((a + b) * 0.5).extend(0.1),
+                    rotation: Quat::from_rotation_z(angle),
+                    scale: Vec3::new(length, style.size, 1.0),
+                    ..default()
+                },
+                layers_line,
+            ));
+        });
+    }
+
+    // Draw x-axis tick labels
+    let n_ticks = 5;
+    for i in 0..=n_ticks {
+        let t = i as f32 / n_ticks as f32;
+        let val = x_min + t * (x_max - x_min);
+        let x = left_x + t * usable_width;
+        let layers_tick = layers.clone();
+
+        commands.entity(root).with_children(|parent| {
+            parent.spawn((
+                Text2d::new(format!("{:.1}", val)),
+                TextFont {
+                    font_size: 10.0,
+                    ..default()
+                },
+                TextColor(Color::srgba(0.7, 0.7, 0.7, 0.9)),
+                Transform::from_translation(Vec3::new(x, bottom_y - 12.0, 2.0)),
+                layers_tick,
+            ));
+        });
+    }
+
+    // Draw axis labels
+    let layers_axis = layers.clone();
+    // Draw axis labels
+    let x_label_text = x_label.unwrap_or("Value");
+    let y_label_text = y_label.unwrap_or("Density");
+
+    commands.entity(root).with_children(|parent| {
+        // X-axis label
+        parent.spawn((
+            Text2d::new(x_label_text),
+            TextFont {
+                font_size: 11.0,
+                ..default()
+            },
+            TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
+            Transform::from_translation(Vec3::new(
+                left_x + usable_width * 0.5,
+                rect.world_center.y - rect.world_size.y * 0.5 + 14.0,
+                2.0,
+            )),
+            layers_axis.clone(),
+        ));
+
+        // Y-axis label
+        parent.spawn((
+            Text2d::new(y_label_text),
+            TextFont {
+                font_size: 11.0,
+                ..default()
+            },
+            TextColor(Color::srgba(0.8, 0.8, 0.8, 1.0)),
+            Transform {
+                translation: Vec3::new(
+                    rect.world_center.x - rect.world_size.x * 0.5 + 14.0,
+                    bottom_y + usable_height * 0.5,
+                    2.0,
+                ),
+                rotation: Quat::from_rotation_z(std::f32::consts::FRAC_PI_2),
+                ..default()
+            },
+            layers_axis,
+        ));
+    });
+}

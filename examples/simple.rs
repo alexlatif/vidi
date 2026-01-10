@@ -77,6 +77,31 @@ fn main() {
             .x_label("Days")
             .y_label("Value")
         })
+        // Third plot: Histogram
+        .add_distribution(|d| {
+            let samples = generate_normal_samples(1000, 0.0, 1.0);
+            d.histogram(samples)
+                .bins(25)
+                .style(Style {
+                    color: Color::rgb(0.2, 0.7, 0.4),
+                    size: 1.0,
+                    opacity: 0.8,
+                })
+                .x_label("Sample Value")
+                .y_label("Count")
+        })
+        // Fourth plot: Probability Density Function (KDE)
+        .add_distribution(|d| {
+            let samples = generate_bimodal_samples(800);
+            d.pdf(samples)
+                .style(Style {
+                    color: Color::rgb(0.8, 0.3, 0.5),
+                    size: 2.0,
+                    opacity: 1.0,
+                })
+                .x_label("Measurement")
+                .y_label("Probability")
+        })
         .show();
 }
 
@@ -167,4 +192,60 @@ fn generate_forecast_data() -> (Vec<Vec2>, Vec<Vec2>, Vec<(Vec<Vec2>, Vec<Vec2>)
         .collect();
 
     (history, mean_forecast, bands)
+}
+
+/// Generate normally distributed samples using Box-Muller transform
+fn generate_normal_samples(n: usize, mean: f32, std_dev: f32) -> Vec<f32> {
+    let mut seed = 54321u64;
+    let mut rng = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed as f32 / u64::MAX as f32)
+    };
+
+    let mut samples = Vec::with_capacity(n);
+    for _ in 0..(n / 2 + 1) {
+        // Box-Muller transform
+        let u1 = rng().max(1e-10);
+        let u2 = rng();
+        let r = (-2.0 * u1.ln()).sqrt();
+        let theta = 2.0 * std::f32::consts::PI * u2;
+
+        samples.push(mean + std_dev * r * theta.cos());
+        if samples.len() < n {
+            samples.push(mean + std_dev * r * theta.sin());
+        }
+    }
+    samples.truncate(n);
+    samples
+}
+
+/// Generate bimodal distribution (mixture of two normals)
+fn generate_bimodal_samples(n: usize) -> Vec<f32> {
+    let mut seed = 98765u64;
+    let mut rng = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed as f32 / u64::MAX as f32)
+    };
+
+    let mut samples = Vec::with_capacity(n);
+    for _ in 0..n {
+        // 40% from first mode, 60% from second
+        let (mean, std_dev) = if rng() < 0.4 {
+            (-2.0, 0.8)
+        } else {
+            (2.5, 1.2)
+        };
+
+        // Box-Muller for single sample
+        let u1 = rng().max(1e-10);
+        let u2 = rng();
+        let r = (-2.0 * u1.ln()).sqrt();
+        let theta = 2.0 * std::f32::consts::PI * u2;
+        samples.push(mean + std_dev * r * theta.cos());
+    }
+    samples
 }
