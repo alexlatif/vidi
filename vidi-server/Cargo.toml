@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Core
-vidi = { path = ".." }
+vidi = { path = "..", package = "vidi-charts" }
 tokio = { version = "1.43", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
