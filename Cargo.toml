@@ -4,7 +4,7 @@ resolver = "3"
 
 [package]
 name = "vidi"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "High-performance data visualization library for Rust, powered by Bevy"
 license = "MIT OR Apache-2.0"
