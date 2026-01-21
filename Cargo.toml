@@ -4,7 +4,7 @@ resolver = "3"
 
 [package]
 name = "vidi-charts"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "High-performance data visualization library for Rust, powered by Bevy"
 license = "MIT OR Apache-2.0"
@@ -15,7 +15,7 @@ readme = "README.md"
 keywords = ["visualization", "plotting", "charts", "bevy", "wasm"]
 categories = ["visualization", "graphics", "game-development", "wasm"]
 rust-version = "1.85"
-authors = ["e0 <abe@abraham.com>"]
+authors = ["Alessandro Latif <alelat19@gmail.com>"]
 exclude = [
     "Dockerfile",
     "docker-compose*.yml",
