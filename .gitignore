@@ -1,1 +1,21 @@
 /target
+
+# Claude local settings
+.claude/settings.local.json
+
+# WASM build output (generated files)
+/vidi-server/wasm/
+
+# Local database
+*.db
+*.sqlite
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

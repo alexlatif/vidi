@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vidi Dashboard</title>
+  <link rel="stylesheet" href="/static/retro.css">
+  <style>
+    /* Dashboard-specific overrides */
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard-viewer">
+    <!-- Header -->
+    <header class="dashboard-viewer__header">
+      <div style="display: flex; align-items: center; gap: 16px;">
+        <a href="/" class="btn">BACK</a>
+        <h2 id="dashboard-title" style="font-family: 'Press Start 2P', cursive; font-size: 12px; color: var(--accent-green);">
+          Loading...
+        </h2>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn" id="btn-refresh" title="Refresh dashboard">REFRESH</button>
+        <button class="btn" id="btn-fullscreen" title="Toggle fullscreen">FULLSCREEN</button>
+      </div>
+    </header>
+
+    <!-- Canvas Container -->
+    <div class="dashboard-viewer__canvas-container">
+      <canvas id="dashboard-canvas"></canvas>
+
+      <!-- Loading overlay -->
+      <div id="loading-overlay" class="loading" style="position: absolute; inset: 0; background: var(--bg-dark);">
+        <div class="loading__spinner"></div>
+        <p>Loading WASM...</p>
+      </div>
+
+      <!-- Error overlay -->
+      <div id="error-overlay" class="empty-state" style="display: none; position: absolute; inset: 0; background: var(--bg-dark);">
+        <div class="empty-state__icon">!</div>
+        <p id="error-message">Failed to load dashboard</p>
+        <button class="btn" onclick="location.reload()">RETRY</button>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <footer class="status-bar">
+      <div class="status-bar__indicator">
+        <div class="status-dot" id="connection-status"></div>
+        <span id="connection-text">Disconnected</span>
+      </div>
+      <div>
+        <span id="update-count">Updates: 0</span>
+        <span style="margin-left: 16px;">Seq: <span id="seq-number">0</span></span>
+      </div>
+    </footer>
+  </div>
+
+  <script src="/static/storage.js"></script>
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>

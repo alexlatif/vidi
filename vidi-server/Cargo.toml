@@ -1,0 +1,43 @@
+[package]
+name = "vidi-server"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "vidi-server"
+path = "src/main.rs"
+
+[dependencies]
+# Core
+vidi = { path = ".." }
+tokio = { version = "1.43", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Web framework
+axum = { version = "0.8", features = ["ws", "macros"] }
+tower = { version = "0.5", features = ["timeout", "limit"] }
+tower-http = { version = "0.6", features = ["fs", "cors", "trace", "compression-gzip"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "chrono", "uuid"] }
+
+# Utils
+uuid = { version = "1.11", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.5", features = ["derive"] }
+
+# TLS
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+rustls = "0.23"
+rustls-pemfile = "2.2"
+
+# Async utilities
+futures = "0.3"
+async-trait = "0.1"
+parking_lot = "0.12"
+dashmap = "6.1"
+anyhow = "1.0"

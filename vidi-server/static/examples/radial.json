@@ -1,0 +1,32 @@
+{
+  "background": {"r": 0.05, "g": 0.05, "b": 0.09, "a": 1.0},
+  "plots": [
+    {
+      "Radial": {
+        "Pie": {
+          "meta": {"title": "Model Components", "description": null},
+          "slices": [
+            ["Attention", 35.0],
+            ["FFN", 28.0],
+            ["Embeddings", 20.0],
+            ["LayerNorm", 12.0],
+            ["Other", 5.0]
+          ]
+        }
+      }
+    },
+    {
+      "Radial": {
+        "Radar": {
+          "meta": {"title": "Model Metrics", "description": null},
+          "axes": ["Accuracy", "Precision", "Recall", "F1", "AUC"],
+          "values": [0.92, 0.88, 0.85, 0.86, 0.94],
+          "style": {"color": {"r": 0.0, "g": 0.83, "b": 1.0, "a": 1.0}, "size": 2.0, "opacity": 0.7}
+        }
+      }
+    }
+  ],
+  "columns": 2,
+  "tabs": [],
+  "active_tab": 0
+}

@@ -1,0 +1,48 @@
+name: agent-merge
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  merge:
+    if: |
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, 'bot::merge')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check verification status
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUM=$(echo "${{ github.event.issue.pull_request.url }}" | grep -oE '[0-9]+$')
+
+          # Check for VERIFIER: PASS in comments
+          VERIFIED=$(gh pr view "$PR_NUM" --json comments --jq '.comments[].body' | grep -c "VERIFIER: PASS" || echo "0")
+
+          if [[ "$VERIFIED" -gt 0 ]]; then
+            echo "verified=true" >> $GITHUB_OUTPUT
+          else
+            echo "verified=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Merge PR
+        if: steps.check.outputs.verified == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PR_NUM=$(echo "${{ github.event.issue.pull_request.url }}" | grep -oE '[0-9]+$')
+          gh pr merge "$PR_NUM" --squash --delete-branch
+
+      - name: Report failure
+        if: steps.check.outputs.verified != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "${{ github.event.issue.number }}" --body "Cannot merge: No VERIFIER: PASS found. Please ensure verification passes first."
+          exit 1

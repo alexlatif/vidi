@@ -46,10 +46,10 @@ fn main() {
             // Render bands from outermost to innermost (so inner renders on top)
             // Outer bands are more transparent, inner bands more opaque
             let band_styles = [
-                (0.15, Color::rgb(0.5, 0.7, 1.0)),  // outermost - very light
+                (0.15, Color::rgb(0.5, 0.7, 1.0)), // outermost - very light
                 (0.25, Color::rgb(0.4, 0.6, 0.95)),
                 (0.4, Color::rgb(0.3, 0.5, 0.9)),
-                (0.6, Color::rgb(0.2, 0.4, 0.85)),  // innermost - more saturated
+                (0.6, Color::rgb(0.2, 0.4, 0.85)), // innermost - more saturated
             ];
 
             for (i, (upper, lower)) in bands.iter().rev().enumerate() {
@@ -234,11 +234,7 @@ fn generate_bimodal_samples(n: usize) -> Vec<f32> {
     let mut samples = Vec::with_capacity(n);
     for _ in 0..n {
         // 40% from first mode, 60% from second
-        let (mean, std_dev) = if rng() < 0.4 {
-            (-2.0, 0.8)
-        } else {
-            (2.5, 1.2)
-        };
+        let (mean, std_dev) = if rng() < 0.4 { (-2.0, 0.8) } else { (2.5, 1.2) };
 
         // Box-Muller for single sample
         let u1 = rng().max(1e-10);

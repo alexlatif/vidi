@@ -101,9 +101,256 @@ impl DashBuilder {
         self
     }
 
+    /// Get the built Dashboard without running it
+    pub fn build(self) -> Dashboard {
+        self.dash
+    }
+
+    /// Run the dashboard locally using Bevy (native only)
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn show(self) {
+    pub fn run_local(self) {
         crate::runtime::run_dashboard(self.dash);
+    }
+
+    /// Deprecated: Use `run_local()` instead
+    #[cfg(not(target_arch = "wasm32"))]
+    #[deprecated(since = "0.2.0", note = "Use `run_local()` instead")]
+    pub fn show(self) {
+        self.run_local();
+    }
+
+    /// Post dashboard to a vidi-server and open in browser
+    ///
+    /// # Arguments
+    /// * `server_url` - Base URL of the vidi-server (e.g., "http://localhost:8080")
+    /// * `config` - Optional configuration for the web dashboard
+    ///
+    /// # Returns
+    /// * `Ok(WebDashboard)` - Handle for updating the dashboard via the server
+    /// * `Err(String)` - Error message if posting failed
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn run_web(self, server_url: &str, config: WebConfig) -> Result<WebDashboard, String> {
+        WebDashboard::create(server_url, self.dash, config)
+    }
+}
+
+/// Configuration for web dashboard posting
+#[derive(Clone, Debug)]
+pub struct WebConfig {
+    /// Experiment name for grouping dashboards
+    pub xp_name: Option<String>,
+    /// User identifier
+    pub user: Option<String>,
+    /// Tags for filtering
+    pub tags: Vec<String>,
+    /// Whether the dashboard is permanent (never expires)
+    pub permanent: bool,
+    /// Time-to-live in seconds (default: 300 = 5 minutes)
+    pub ttl: u64,
+    /// Open the dashboard URL in the browser automatically
+    pub open_browser: bool,
+}
+
+impl Default for WebConfig {
+    fn default() -> Self {
+        Self {
+            xp_name: None,
+            user: None,
+            tags: vec![],
+            permanent: false,
+            ttl: 300, // 5 minutes
+            open_browser: true,
+        }
+    }
+}
+
+impl WebConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn xp_name(mut self, name: impl Into<String>) -> Self {
+        self.xp_name = Some(name.into());
+        self
+    }
+
+    pub fn user(mut self, user: impl Into<String>) -> Self {
+        self.user = Some(user.into());
+        self
+    }
+
+    pub fn tags(mut self, tags: Vec<String>) -> Self {
+        self.tags = tags;
+        self
+    }
+
+    pub fn tag(mut self, tag: impl Into<String>) -> Self {
+        self.tags.push(tag.into());
+        self
+    }
+
+    pub fn permanent(mut self) -> Self {
+        self.permanent = true;
+        self
+    }
+
+    pub fn ttl(mut self, seconds: u64) -> Self {
+        self.ttl = seconds;
+        self
+    }
+
+    pub fn no_browser(mut self) -> Self {
+        self.open_browser = false;
+        self
+    }
+}
+
+/// Handle to a web dashboard for real-time updates
+#[cfg(not(target_arch = "wasm32"))]
+pub struct WebDashboard {
+    /// Dashboard ID on the server
+    pub id: String,
+    /// Server base URL
+    pub server_url: String,
+    /// Full URL to view the dashboard
+    pub view_url: String,
+    /// HTTP client for updates
+    client: ureq::Agent,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl WebDashboard {
+    /// Create a new web dashboard by posting to the server
+    fn create(server_url: &str, dashboard: Dashboard, config: WebConfig) -> Result<Self, String> {
+        let client = ureq::Agent::new_with_defaults();
+        let url = format!("{}/api/v1/dashboards", server_url.trim_end_matches('/'));
+
+        let payload = serde_json::json!({
+            "xp_name": config.xp_name,
+            "user": config.user,
+            "tags": config.tags,
+            "permanent": config.permanent,
+            "ttl": config.ttl,
+            "dashboard": dashboard,
+        });
+
+        let body_str = serde_json::to_string(&payload)
+            .map_err(|e| format!("Failed to serialize payload: {}", e))?;
+
+        let response = client
+            .post(&url)
+            .content_type("application/json")
+            .send(body_str.as_bytes())
+            .map_err(|e| format!("Failed to post dashboard: {}", e))?;
+
+        let body: serde_json::Value = response
+            .into_body()
+            .read_json()
+            .map_err(|e| format!("Failed to parse response: {}", e))?;
+
+        let id = body["id"]
+            .as_str()
+            .ok_or("Missing 'id' in response")?
+            .to_string();
+
+        let server_base = server_url.trim_end_matches('/');
+        let view_url = format!("{}/d/{}", server_base, id);
+
+        if config.open_browser {
+            let _ = open::that(&view_url);
+        }
+
+        Ok(Self {
+            id,
+            server_url: server_base.to_string(),
+            view_url,
+            client,
+        })
+    }
+
+    /// Append points to a 2D scatter/line plot layer
+    ///
+    /// # Arguments
+    /// * `plot_id` - The plot ID (from Graph2D.id.0)
+    /// * `layer_idx` - Layer index within the plot
+    /// * `points` - Points as (x, y) tuples
+    pub fn append_points_2d(
+        &self,
+        plot_id: u64,
+        layer_idx: usize,
+        points: &[(f32, f32)],
+    ) -> Result<(), String> {
+        let url = format!("{}/api/v1/dashboards/{}/update", self.server_url, self.id);
+
+        let payload = serde_json::json!({
+            "type": "append_points_2d",
+            "plot_id": plot_id,
+            "layer_idx": layer_idx,
+            "points": points.iter().map(|(x, y)| [*x, *y]).collect::<Vec<_>>(),
+        });
+
+        let body_str = serde_json::to_string(&payload)
+            .map_err(|e| format!("Failed to serialize payload: {}", e))?;
+
+        self.client
+            .post(&url)
+            .content_type("application/json")
+            .send(body_str.as_bytes())
+            .map_err(|e| format!("Failed to append points: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Replace all points in a 2D layer
+    pub fn replace_trace_2d(
+        &self,
+        plot_id: u64,
+        layer_idx: usize,
+        points: &[(f32, f32)],
+    ) -> Result<(), String> {
+        let url = format!("{}/api/v1/dashboards/{}/update", self.server_url, self.id);
+
+        let payload = serde_json::json!({
+            "type": "replace_trace_2d",
+            "plot_id": plot_id,
+            "layer_idx": layer_idx,
+            "points": points.iter().map(|(x, y)| [*x, *y]).collect::<Vec<_>>(),
+        });
+
+        let body_str = serde_json::to_string(&payload)
+            .map_err(|e| format!("Failed to serialize payload: {}", e))?;
+
+        self.client
+            .post(&url)
+            .content_type("application/json")
+            .send(body_str.as_bytes())
+            .map_err(|e| format!("Failed to replace trace: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Delete the dashboard from the server
+    pub fn delete(self) -> Result<(), String> {
+        let url = format!("{}/api/v1/dashboards/{}", self.server_url, self.id);
+
+        self.client
+            .delete(&url)
+            .call()
+            .map_err(|e| format!("Failed to delete dashboard: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Extend the TTL (touch) to prevent expiration
+    pub fn touch(&self) -> Result<(), String> {
+        let url = format!("{}/api/v1/dashboards/{}/touch", self.server_url, self.id);
+
+        self.client
+            .post(&url)
+            .send(&[] as &[u8])
+            .map_err(|e| format!("Failed to touch dashboard: {}", e))?;
+
+        Ok(())
     }
 }
 
@@ -235,7 +482,12 @@ impl Plot2DBuilder {
     }
 
     /// Bubble chart (scatter with variable point sizes)
-    pub fn bubble(mut self, xy: Vec<Vec2>, sizes: Vec<f32>, style: impl Into<Option<Style>>) -> Self {
+    pub fn bubble(
+        mut self,
+        xy: Vec<Vec2>,
+        sizes: Vec<f32>,
+        style: impl Into<Option<Style>>,
+    ) -> Self {
         let mut layer = Layer2D::new(Geometry2D::Points, xy);
         layer.sizes = Some(sizes);
         if let Some(st) = style.into() {
@@ -511,7 +763,10 @@ pub struct RadialBuilder {
 impl RadialBuilder {
     fn new() -> Self {
         Self {
-            rad: Radial::Pie { meta: PlotMeta::default(), slices: vec![] },
+            rad: Radial::Pie {
+                meta: PlotMeta::default(),
+                slices: vec![],
+            },
         }
     }
 

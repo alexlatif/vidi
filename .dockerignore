@@ -1,0 +1,38 @@
+# Build artifacts
+target/
+*.wasm
+!vidi-server/wasm/*.wasm
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation
+*.md
+!CLAUDE.md
+
+# Local files
+*.db
+*.sqlite
+.env
+.env.*
+
+# CI/CD (not needed in image)
+.github/
+
+# Claude Code
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+*.profraw
+coverage/

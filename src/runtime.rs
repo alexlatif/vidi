@@ -3,10 +3,11 @@ use bevy::prelude::*;
 use crate::core::Dashboard;
 use crate::render::{DashRenderPlugin, DashboardRes};
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run_dashboard(dashboard: Dashboard) {
     let bg = dashboard.background;
     App::new()
-        .insert_resource(ClearColor(Color::srgb(bg.r, bg.g, bg.b).into()))
+        .insert_resource(ClearColor(Color::srgb(bg.r, bg.g, bg.b)))
         .insert_resource(DashboardRes::new(dashboard))
         .add_plugins((
             DefaultPlugins.set(ImagePlugin::default_nearest()),
@@ -17,7 +18,10 @@ pub fn run_dashboard(dashboard: Dashboard) {
 
 #[cfg(target_arch = "wasm32")]
 pub fn run_dashboard(dashboard: Dashboard, canvas_id: &str) {
+    let bg = dashboard.background;
     App::new()
+        .insert_resource(ClearColor(Color::srgb(bg.r, bg.g, bg.b)))
+        .insert_resource(DashboardRes::new(dashboard))
         .add_plugins((
             DefaultPlugins
                 .set(WindowPlugin {
@@ -29,8 +33,7 @@ pub fn run_dashboard(dashboard: Dashboard, canvas_id: &str) {
                     ..default()
                 })
                 .set(ImagePlugin::default_nearest()),
-            DashboardPlugin,
+            DashRenderPlugin,
         ))
-        .insert_resource(DashboardState::new(dashboard))
         .run();
 }

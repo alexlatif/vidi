@@ -147,8 +147,8 @@ pub struct Graph2D {
     pub y_label: Option<String>,
 }
 
-impl Graph2D {
-    pub fn new() -> Self {
+impl Default for Graph2D {
+    fn default() -> Self {
         Self {
             id: PlotId::new(),
             meta: PlotMeta::default(),
@@ -159,6 +159,12 @@ impl Graph2D {
             x_label: None,
             y_label: None,
         }
+    }
+}
+
+impl Graph2D {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn with_layer(mut self, layer: Layer2D) -> Self {
@@ -204,8 +210,8 @@ pub enum Geometry2D {
     Line,
     Points,
     Area,
-    Bars,       // interpret xy as (x, y) heights
-    Stems,      // vertical from baseline to y
+    Bars,        // interpret xy as (x, y) heights
+    Stems,       // vertical from baseline to y
     FillBetween, // fills area between two lines (xy = upper, lower_line = lower)
 }
 
@@ -246,8 +252,8 @@ pub struct Graph3D {
     pub z_label: Option<String>,
 }
 
-impl Graph3D {
-    pub fn new() -> Self {
+impl Default for Graph3D {
+    fn default() -> Self {
         Self {
             id: PlotId::new(),
             meta: PlotMeta::default(),
@@ -260,6 +266,12 @@ impl Graph3D {
             y_label: None,
             z_label: None,
         }
+    }
+}
+
+impl Graph3D {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -330,8 +342,8 @@ pub enum Radial {
     },
     Radar {
         meta: PlotMeta,
-        axes: Vec<String>,    // axis labels
-        values: Vec<f32>,     // values for each axis (0-1 normalized)
+        axes: Vec<String>, // axis labels
+        values: Vec<f32>,  // values for each axis (0-1 normalized)
         style: Style,
     },
 }
@@ -350,7 +362,7 @@ pub struct Candlestick {
 /// Single OHLC candle
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct OHLC {
-    pub x: f32,     // time/index
+    pub x: f32, // time/index
     pub open: f32,
     pub high: f32,
     pub low: f32,
@@ -359,7 +371,13 @@ pub struct OHLC {
 
 impl OHLC {
     pub fn new(x: f32, open: f32, high: f32, low: f32, close: f32) -> Self {
-        Self { x, open, high, low, close }
+        Self {
+            x,
+            open,
+            high,
+            low,
+            close,
+        }
     }
 }
 
@@ -367,13 +385,13 @@ impl OHLC {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Heatmap {
     pub meta: PlotMeta,
-    pub dims: UVec2,           // (cols, rows)
-    pub values: Vec<f32>,      // row-major: values[row * cols + col]
-    pub vmin: Option<f32>,     // auto if None
-    pub vmax: Option<f32>,     // auto if None
+    pub dims: UVec2,       // (cols, rows)
+    pub values: Vec<f32>,  // row-major: values[row * cols + col]
+    pub vmin: Option<f32>, // auto if None
+    pub vmax: Option<f32>, // auto if None
     pub row_labels: Option<Vec<String>>,
     pub col_labels: Option<Vec<String>>,
-    pub show_values: bool,     // show numeric values in cells
+    pub show_values: bool, // show numeric values in cells
     pub colormap: Colormap,
 }
 
@@ -384,8 +402,8 @@ pub enum Colormap {
     Plasma,
     Inferno,
     Magma,
-    Coolwarm,   // diverging: blue-white-red
-    RdBu,       // diverging: red-white-blue
+    Coolwarm, // diverging: blue-white-red
+    RdBu,     // diverging: red-white-blue
     Blues,
     Reds,
     Greens,
@@ -526,7 +544,8 @@ impl Dashboard {
     /// Get the active plots (from active tab if using tabs, otherwise direct plots)
     pub fn active_plots(&self) -> &[Plot] {
         if self.has_tabs() {
-            self.tabs.get(self.active_tab)
+            self.tabs
+                .get(self.active_tab)
                 .map(|t| t.plots.as_slice())
                 .unwrap_or(&[])
         } else {
@@ -537,7 +556,8 @@ impl Dashboard {
     /// Get the columns setting for the active view
     pub fn active_columns(&self) -> Option<usize> {
         if self.has_tabs() {
-            self.tabs.get(self.active_tab)
+            self.tabs
+                .get(self.active_tab)
                 .and_then(|t| t.columns)
                 .or(self.columns)
         } else {

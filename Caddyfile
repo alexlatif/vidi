@@ -1,0 +1,4 @@
+{$DOMAIN:xp.neurali.ai} {
+    reverse_proxy vidi-server:8080
+    encode gzip
+}

@@ -6,10 +6,16 @@ use std::sync::atomic::{AtomicU32, Ordering};
 #[derive(Component, Clone, Copy, Hash, Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub struct PlotId(pub u64);
 
-impl PlotId {
-    pub fn new() -> Self {
+impl Default for PlotId {
+    fn default() -> Self {
         static CTR: AtomicU32 = AtomicU32::new(1);
         Self(CTR.fetch_add(1, Ordering::Relaxed).into())
+    }
+}
+
+impl PlotId {
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -114,8 +120,8 @@ impl Default for View3D {
         Self {
             target: Vec3::ZERO,
             radius: 12.0,
-            yaw: 0.8,        // initial horizontal rotation
-            pitch: -0.4,     // initial vertical angle (looking down slightly)
+            yaw: 0.8,    // initial horizontal rotation
+            pitch: -0.4, // initial vertical angle (looking down slightly)
         }
     }
 }

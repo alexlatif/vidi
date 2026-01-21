@@ -49,7 +49,7 @@ pub fn setup_global_scene(mut commands: Commands) {
 
     // Spawn a main UI camera for tab bar and global UI elements (layer 0)
     commands.spawn((
-        Camera2d::default(),
+        Camera2d,
         Camera {
             order: 100, // Render after tile cameras (which use order 10+)
             ..default()

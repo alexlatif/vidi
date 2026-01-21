@@ -1,0 +1,33 @@
+services:
+  vidi-server:
+    image: vidi-server:latest
+    restart: unless-stopped
+    volumes:
+      - vidi-data:/app/data
+    networks:
+      - vidi
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      - DOMAIN=${DOMAIN:-xp.neurali.ai}
+    networks:
+      - vidi
+    depends_on:
+      - vidi-server
+
+volumes:
+  vidi-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  vidi:

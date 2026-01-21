@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(curl *|*:*)",
+      "Bash(wget *|*:*)"
+    ],
+    "allow": [
+      "Bash(just:*)",
+      "Bash(cargo:*)",
+      "Bash(rustup:*)",
+      "Bash(rustc:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git switch:*)",
+      "Bash(git checkout:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh issue:*)",
+      "Read(*)",
+      "Edit(*)",
+      "Write(*)"
+    ],
+    "ask": [
+      "Bash(git rebase:*)",
+      "Bash(git reset:*)"
+    ]
+  }
+}

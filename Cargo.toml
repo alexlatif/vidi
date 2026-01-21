@@ -1,11 +1,24 @@
+[workspace]
+members = [".", "vidi-server", "vidi-server/dashboard-template"]
+resolver = "3"
+
 [package]
 name = "vidi"
 version = "0.1.0"
 edition = "2024"
+description = "High-performance data visualization library for Rust, powered by Bevy"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/alexlatif/vidi"
+homepage = "https://github.com/alexlatif/vidi"
+documentation = "https://docs.rs/vidi"
+readme = "README.md"
+keywords = ["visualization", "plotting", "charts", "bevy", "wasm"]
+categories = ["visualization", "graphics", "game-development", "wasm"]
+rust-version = "1.85"
+authors = ["e0 <abe@abraham.com>"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
-
 
 [dependencies]
 bevy = "0.17.3"
@@ -24,6 +37,11 @@ glam = "0.30.9"
 bevy_camera = "0.17.3"
 bevy_render = "0.17.3"
 
+# HTTP client for web dashboard (native only)
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ureq = { version = "3.0", features = ["json"] }
+open = "5.3"
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"
 js-sys = "0.3"
@@ -36,24 +54,6 @@ codegen-units = 1
 panic = "abort"
 strip = true
 
-
-# #!/bin/bash
-# # build.sh
-
-# # Build for WASM
-# echo "Building for WASM..."
-# cargo build --release --target wasm32-unknown-unknown
-
-# # Generate JS bindings
-# echo "Generating JS bindings..."
-# wasm-bindgen target/wasm32-unknown-unknown/release/dash.wasm \
-#   --target web \
-#   --out-dir www/static \
-#   --no-typescript
-
-# # Optimize
-# echo "Optimizing WASM..."
-# wasm-opt -Oz -o www/static/dash_opt.wasm www/static/dash_bg.wasm
-# mv www/static/dash_opt.wasm www/static/dash_bg.wasm
-
-# echo "Build complete!"
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

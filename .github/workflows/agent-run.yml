@@ -1,0 +1,80 @@
+name: agent-run
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: agent-run-${{ github.repository }}-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    if: contains(github.event.comment.body, 'bot::run')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for branch operations
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@just
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check for existing branch/PR
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ISSUE_NUM=${{ github.event.issue.number }}
+          BRANCH="agent/issue-${ISSUE_NUM}"
+
+          # Check remote branch
+          if git ls-remote --heads origin "$BRANCH" | grep -q "$BRANCH"; then
+            echo "branch_exists=true" >> $GITHUB_OUTPUT
+            git fetch origin "$BRANCH"
+            git checkout "$BRANCH"
+            git pull origin "$BRANCH"
+          else
+            echo "branch_exists=false" >> $GITHUB_OUTPUT
+            git checkout -b "$BRANCH"
+          fi
+
+          # Check PR
+          PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' || echo "")
+          echo "pr_number=${PR}" >> $GITHUB_OUTPUT
+          echo "has_pr=$([[ -n "$PR" ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: |
+            IMPLEMENTATION MODE.
+
+            Issue: #${{ github.event.issue.number }}
+            Branch: agent/issue-${{ github.event.issue.number }}
+            Existing PR: ${{ steps.check.outputs.has_pr }} (PR #${{ steps.check.outputs.pr_number }})
+
+            1. Read the latest plan from the issue conversation
+            2. FIRST: Create/update the test or example that proves the fix works
+            3. THEN: Implement the fix
+            4. Run `just verify`
+            5. Run the issue-specific verification from the plan
+            6. Commit with messages like: [issue-${{ github.event.issue.number }}] <description>
+            7. Push to the branch
+            8. If no PR exists: create one linking to issue #${{ github.event.issue.number }}
+            9. If PR exists: it will auto-update on push
+
+            Include verification output in PR description.
+          claude_args: |
+            --max-turns 30

@@ -1,0 +1,11 @@
+services:
+  vidi-server:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - vidi-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  vidi-data:

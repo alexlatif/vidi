@@ -5,6 +5,7 @@ pub mod systems;
 
 use components::*;
 use draw::*;
+pub use draw::{data_to_world, world_to_data};
 pub use resources::*;
 use systems::*;
 

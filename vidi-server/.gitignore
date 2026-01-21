@@ -1,0 +1,7 @@
+# WASM build output (generated files)
+/wasm/
+
+# SQLite database
+*.db
+*.db-shm
+*.db-wal

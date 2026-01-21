@@ -1,3 +1,6 @@
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::collapsible_if)]
+
 use super::*;
 use crate::render::PlotId;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
@@ -40,9 +43,9 @@ pub fn sync_plots_to_tiles(
     for (i, plot) in active.iter().enumerate() {
         let id = PlotId(i as u64);
 
-        if !registry.by_plot.contains_key(&id) {
+        if let std::collections::hash_map::Entry::Vacant(e) = registry.by_plot.entry(id) {
             let tile = spawn_tile(&mut commands, id, i, plot);
-            registry.by_plot.insert(id, tile);
+            e.insert(tile);
             registry.dirty.push_back(id);
         }
     }
@@ -136,7 +139,7 @@ pub fn update_tile_layout(
         let vp_x = margin + col as f32 * (tile_w + gap);
         let vp_y = margin + tab_bar_height + row as f32 * (tile_h + gap);
 
-        let scale = window.resolution.scale_factor() as f32;
+        let scale = window.resolution.scale_factor();
         let phys_pos = UVec2::new((vp_x * scale).round() as u32, (vp_y * scale).round() as u32);
         let phys_size = UVec2::new(
             (tile_w * scale).round() as u32,
@@ -210,7 +213,7 @@ pub fn sync_tile_cameras(
                 };
 
                 commands.entity(cam_entity).insert((
-                    Camera2d::default(),
+                    Camera2d,
                     Camera {
                         viewport: Some(rect.viewport.clone()),
                         order: 10 + tile.index as isize,
@@ -245,7 +248,9 @@ pub fn sync_tile_cameras(
                 let overlay_entity = if let Some(&overlay) = registry.overlay_of.get(&tile.id) {
                     overlay
                 } else {
-                    let overlay = commands.spawn((TileOverlayCamera, Transform::default())).id();
+                    let overlay = commands
+                        .spawn((TileOverlayCamera, Transform::default()))
+                        .id();
                     registry.overlay_of.insert(tile.id, overlay);
                     overlay
                 };
@@ -257,7 +262,7 @@ pub fn sync_tile_cameras(
                 };
 
                 commands.entity(overlay_entity).insert((
-                    Camera2d::default(),
+                    Camera2d,
                     Camera {
                         viewport: Some(rect.viewport.clone()),
                         order: 50 + tile.index as isize, // Render after all 3D cameras (10+N)
@@ -277,7 +282,7 @@ pub fn sync_tile_cameras(
                 };
 
                 commands.entity(cam_entity).insert((
-                    Camera2d::default(),
+                    Camera2d,
                     Camera {
                         viewport: Some(rect.viewport.clone()),
                         order: 10 + tile.index as isize,
@@ -358,7 +363,9 @@ pub fn handle_input(
     mut wheel: MessageReader<MouseWheel>,
     mut motion: MessageReader<MouseMotion>,
 ) {
-    let Some(hovered_index) = hovered.0 else { return };
+    let Some(hovered_index) = hovered.0 else {
+        return;
+    };
 
     // Collect events first (they can only be read once)
     let mut zoom_delta = 0.0;
@@ -382,8 +389,8 @@ pub fn handle_input(
         // Zoom toward center with proper offset adjustment
         if zoom_delta != 0.0 {
             let old_scale = view.scale;
-            let new_scale = (view.scale * (1.0 + zoom_delta * 0.05))
-                .clamp(view.min_scale, view.max_scale);
+            let new_scale =
+                (view.scale * (1.0 + zoom_delta * 0.05)).clamp(view.min_scale, view.max_scale);
 
             if new_scale != old_scale {
                 view.offset = view.offset * new_scale / old_scale;
@@ -432,7 +439,8 @@ pub fn handle_input(
             let right = Vec3::new(view3d.yaw.cos(), 0.0, -view3d.yaw.sin());
             let up = Vec3::Y;
             let radius = view3d.radius;
-            view3d.target += (-right * motion_delta.x + up * motion_delta.y) * pan_speed * radius * 0.1;
+            view3d.target +=
+                (-right * motion_delta.x + up * motion_delta.y) * pan_speed * radius * 0.1;
             changed = true;
         }
 
@@ -518,8 +526,8 @@ pub fn auto_fit_tiles(
         // Set view to center on data with zoom limits
         view.scale = fit_scale;
         view.offset = -data_center * fit_scale;
-        view.min_scale = fit_scale * 0.5;  // Can zoom out to 50% of fit
-        view.max_scale = fit_scale * 4.0;  // Can zoom in to 4x of fit
+        view.min_scale = fit_scale * 0.5; // Can zoom out to 50% of fit
+        view.max_scale = fit_scale * 4.0; // Can zoom in to 4x of fit
 
         // Mark as fitted and dirty
         commands.entity(entity).try_insert(AutoFitted);
@@ -598,77 +606,100 @@ pub fn draw_dirty_tiles(
                         layer,
                     );
                 }
-                crate::core::Plot::Distribution(dist) => {
-                    match dist {
-                        crate::core::Distribution::Histogram { meta, values, bins, style, x_label, y_label } => {
-                            draw_plot_title(&mut commands, root, meta, rect, layer.clone());
-                            draw_histogram(
-                                &mut commands,
-                                root,
-                                values,
-                                *bins,
-                                style,
-                                x_label.as_deref(),
-                                y_label.as_deref(),
-                                rect,
-                                view,
-                                &unit,
-                                &mut materials,
-                                layer,
-                            );
-                        }
-                        crate::core::Distribution::Pdf { meta, values, style, x_label, y_label } => {
-                            draw_plot_title(&mut commands, root, meta, rect, layer.clone());
-                            draw_pdf(
-                                &mut commands,
-                                root,
-                                values,
-                                style,
-                                x_label.as_deref(),
-                                y_label.as_deref(),
-                                rect,
-                                view,
-                                &unit,
-                                &mut meshes,
-                                &mut materials,
-                                layer,
-                            );
-                        }
-                        crate::core::Distribution::BoxPlot { meta, groups, style, x_label, y_label } => {
-                            draw_plot_title(&mut commands, root, meta, rect, layer.clone());
-                            draw_boxplot(
-                                &mut commands,
-                                root,
-                                groups,
-                                style,
-                                x_label.as_deref(),
-                                y_label.as_deref(),
-                                rect,
-                                view,
-                                &unit,
-                                &mut materials,
-                                layer,
-                            );
-                        }
-                        crate::core::Distribution::ECDF { meta, values, style, x_label, y_label } => {
-                            draw_plot_title(&mut commands, root, meta, rect, layer.clone());
-                            draw_ecdf(
-                                &mut commands,
-                                root,
-                                values,
-                                style,
-                                x_label.as_deref(),
-                                y_label.as_deref(),
-                                rect,
-                                view,
-                                &unit,
-                                &mut meshes,
-                                &mut materials,
-                                layer,
-                            );
-                        }
+                crate::core::Plot::Distribution(dist) => match dist {
+                    crate::core::Distribution::Histogram {
+                        meta,
+                        values,
+                        bins,
+                        style,
+                        x_label,
+                        y_label,
+                    } => {
+                        draw_plot_title(&mut commands, root, meta, rect, layer.clone());
+                        draw_histogram(
+                            &mut commands,
+                            root,
+                            values,
+                            *bins,
+                            style,
+                            x_label.as_deref(),
+                            y_label.as_deref(),
+                            rect,
+                            view,
+                            &unit,
+                            &mut materials,
+                            layer,
+                        );
                     }
-                }
+                    crate::core::Distribution::Pdf {
+                        meta,
+                        values,
+                        style,
+                        x_label,
+                        y_label,
+                    } => {
+                        draw_plot_title(&mut commands, root, meta, rect, layer.clone());
+                        draw_pdf(
+                            &mut commands,
+                            root,
+                            values,
+                            style,
+                            x_label.as_deref(),
+                            y_label.as_deref(),
+                            rect,
+                            view,
+                            &unit,
+                            &mut meshes,
+                            &mut materials,
+                            layer,
+                        );
+                    }
+                    crate::core::Distribution::BoxPlot {
+                        meta,
+                        groups,
+                        style,
+                        x_label,
+                        y_label,
+                    } => {
+                        draw_plot_title(&mut commands, root, meta, rect, layer.clone());
+                        draw_boxplot(
+                            &mut commands,
+                            root,
+                            groups,
+                            style,
+                            x_label.as_deref(),
+                            y_label.as_deref(),
+                            rect,
+                            view,
+                            &unit,
+                            &mut materials,
+                            layer,
+                        );
+                    }
+                    crate::core::Distribution::ECDF {
+                        meta,
+                        values,
+                        style,
+                        x_label,
+                        y_label,
+                    } => {
+                        draw_plot_title(&mut commands, root, meta, rect, layer.clone());
+                        draw_ecdf(
+                            &mut commands,
+                            root,
+                            values,
+                            style,
+                            x_label.as_deref(),
+                            y_label.as_deref(),
+                            rect,
+                            view,
+                            &unit,
+                            &mut meshes,
+                            &mut materials,
+                            layer,
+                        );
+                    }
+                },
                 crate::core::Plot::Candlestick(candle) => {
                     draw_plot_title(&mut commands, root, &candle.meta, rect, layer.clone());
                     draw_candlestick(
@@ -745,7 +776,7 @@ fn grid_dims(n: usize, aspect: f32, configured_cols: Option<usize>) -> (usize, u
     // If columns are explicitly configured, use that
     if let Some(cols) = configured_cols {
         let cols = cols.max(1);
-        let rows = (n + cols - 1) / cols;
+        let rows = n.div_ceil(cols);
         return (cols, rows);
     }
 
@@ -769,7 +800,7 @@ fn grid_dims(n: usize, aspect: f32, configured_cols: Option<usize>) -> (usize, u
         }
         _ => {
             let cols = (n as f32).sqrt().ceil() as usize;
-            let rows = (n + cols - 1) / cols;
+            let rows = n.div_ceil(cols);
             (cols, rows)
         }
     }
@@ -786,21 +817,8 @@ fn cleanup_tile(commands: &mut Commands, registry: &mut TileRegistry, entity: En
     }
 }
 
-/// Convert world coordinates back to data coordinates
-fn world_to_data(world: Vec2, rect: &TileRect, view: &TileView) -> Vec2 {
-    (world - rect.world_center - view.offset) / view.scale
-}
-
-/// Convert data coordinates to world coordinates
-fn data_to_world_sys(data: Vec2, rect: &TileRect, view: &TileView) -> Vec2 {
-    rect.world_center + view.offset + data * view.scale
-}
-
 /// Find nearest data point on any trace in the graph
-fn find_nearest_point(
-    cursor_data: Vec2,
-    graph: &crate::core::Graph2D,
-) -> Option<Vec2> {
+fn find_nearest_point(cursor_data: Vec2, graph: &crate::core::Graph2D) -> Option<Vec2> {
     let mut nearest: Option<(Vec2, f32)> = None;
 
     for layer in &graph.layers {
@@ -903,7 +921,7 @@ pub fn update_crosshair(
 
                 // Find nearest data point
                 let snap_data = find_nearest_point(cursor_data, graph).unwrap_or(cursor_data);
-                let snap_world = data_to_world_sys(snap_data, rect, view);
+                let snap_world = data_to_world(snap_data, rect, view);
 
                 cursor_pos.data_coords = Some(snap_data);
 
@@ -1097,13 +1115,16 @@ fn spawn_distribution_crosshair(
     let usable_width = rect.world_size.x * (1.0 - padding_left - padding_right);
     let usable_height = rect.world_size.y * (1.0 - padding_bottom - padding_top);
     let left_x = rect.world_center.x - rect.world_size.x * 0.5 + rect.world_size.x * padding_left;
-    let bottom_y = rect.world_center.y - rect.world_size.y * 0.5 + rect.world_size.y * padding_bottom;
+    let bottom_y =
+        rect.world_center.y - rect.world_size.y * 0.5 + rect.world_size.y * padding_bottom;
     let right_x = left_x + usable_width;
     let top_y = bottom_y + usable_height;
 
     // Check if cursor is within the plot area
-    if cursor_world.x < left_x || cursor_world.x > right_x
-        || cursor_world.y < bottom_y || cursor_world.y > top_y
+    if cursor_world.x < left_x
+        || cursor_world.x > right_x
+        || cursor_world.y < bottom_y
+        || cursor_world.y > top_y
     {
         return;
     }
@@ -1137,13 +1158,16 @@ fn spawn_distribution_crosshair(
             // Count values in this bin
             let bin_start = min_val + bar_index as f32 * bin_width_data;
             let bin_end = bin_start + bin_width_data;
-            let count = values.iter().filter(|&&v| {
-                if bar_index == *bins - 1 {
-                    v >= bin_start && v <= bin_end
-                } else {
-                    v >= bin_start && v < bin_end
-                }
-            }).count();
+            let count = values
+                .iter()
+                .filter(|&&v| {
+                    if bar_index == *bins - 1 {
+                        v >= bin_start && v <= bin_end
+                    } else {
+                        v >= bin_start && v < bin_end
+                    }
+                })
+                .count();
 
             // Calculate bar geometry for highlight
             let bar_center_x = left_x + (bar_index as f32 + 0.5) * bar_width_world;
@@ -1227,20 +1251,28 @@ fn spawn_distribution_crosshair(
             };
             let bandwidth = (1.06 * std_dev * n.powf(-0.2)).max(0.01);
 
-            let density: f32 = values.iter().map(|&xi| {
-                let u = (data_x - xi) / bandwidth;
-                (-0.5 * u * u).exp() / (2.506628 * bandwidth)
-            }).sum::<f32>() / n;
+            let density: f32 = values
+                .iter()
+                .map(|&xi| {
+                    let u = (data_x - xi) / bandwidth;
+                    (-0.5 * u * u).exp() / (2.506628 * bandwidth)
+                })
+                .sum::<f32>()
+                / n;
 
             // Compute max density for normalization
             let max_density = {
                 let mut max_d = 0.0f32;
                 for i in 0..100 {
                     let x = x_min + (i as f32 / 99.0) * (x_max - x_min);
-                    let d: f32 = values.iter().map(|&xi| {
-                        let u = (x - xi) / bandwidth;
-                        (-0.5 * u * u).exp() / (2.506628 * bandwidth)
-                    }).sum::<f32>() / n;
+                    let d: f32 = values
+                        .iter()
+                        .map(|&xi| {
+                            let u = (x - xi) / bandwidth;
+                            (-0.5 * u * u).exp() / (2.506628 * bandwidth)
+                        })
+                        .sum::<f32>()
+                        / n;
                     max_d = max_d.max(d);
                 }
                 max_d
@@ -1306,7 +1338,8 @@ fn spawn_distribution_crosshair(
                     }
 
                     // Point marker at curve intersection
-                    let point_mat = materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.95)));
+                    let point_mat =
+                        materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.95)));
                     parent.spawn((
                         Mesh2d(unit.quad.clone()),
                         MeshMaterial2d(point_mat),
@@ -1349,13 +1382,17 @@ fn spawn_distribution_crosshair(
 
             let usable_width = rect.world_size.x * (1.0 - padding_left - padding_right);
             let usable_height = rect.world_size.y * (1.0 - padding_bottom - padding_top);
-            let left_x = rect.world_center.x - rect.world_size.x * 0.5 + rect.world_size.x * padding_left;
-            let bottom_y = rect.world_center.y - rect.world_size.y * 0.5 + rect.world_size.y * padding_bottom;
+            let left_x =
+                rect.world_center.x - rect.world_size.x * 0.5 + rect.world_size.x * padding_left;
+            let bottom_y =
+                rect.world_center.y - rect.world_size.y * 0.5 + rect.world_size.y * padding_bottom;
             let right_x = left_x + usable_width;
             let top_y = bottom_y + usable_height;
 
-            if cursor_world.x < left_x || cursor_world.x > right_x
-                || cursor_world.y < bottom_y || cursor_world.y > top_y
+            if cursor_world.x < left_x
+                || cursor_world.x > right_x
+                || cursor_world.y < bottom_y
+                || cursor_world.y > top_y
             {
                 return;
             }
@@ -1391,7 +1428,8 @@ fn spawn_distribution_crosshair(
             let box_width = group_width * 0.6;
 
             // Highlight the box
-            let highlight_mat = materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.15)));
+            let highlight_mat =
+                materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.15)));
             commands
                 .spawn((
                     Crosshair { tile_index },
@@ -1500,7 +1538,8 @@ fn spawn_distribution_crosshair(
                     }
 
                     // Point marker
-                    let point_mat = materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.95)));
+                    let point_mat =
+                        materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.95)));
                     parent.spawn((
                         Mesh2d(unit.quad.clone()),
                         MeshMaterial2d(point_mat),
@@ -1553,8 +1592,16 @@ fn spawn_candlestick_tooltip(
 
     // Calculate candle width in data units (same as draw_candlestick)
     let n_candles = candle.candles.len();
-    let x_min = candle.candles.iter().map(|c| c.x).fold(f32::INFINITY, f32::min);
-    let x_max = candle.candles.iter().map(|c| c.x).fold(f32::NEG_INFINITY, f32::max);
+    let x_min = candle
+        .candles
+        .iter()
+        .map(|c| c.x)
+        .fold(f32::INFINITY, f32::min);
+    let x_max = candle
+        .candles
+        .iter()
+        .map(|c| c.x)
+        .fold(f32::NEG_INFINITY, f32::max);
     let x_range = (x_max - x_min).max(1.0);
     let candle_data_width = x_range / (n_candles as f32 * 1.5);
 
@@ -1577,9 +1624,9 @@ fn spawn_candlestick_tooltip(
     }
 
     // Transform candle position to world coordinates using view
-    let candle_world = data_to_world_sys(Vec2::new(c.x, (c.high + c.low) * 0.5), rect, view);
-    let candle_high_world = data_to_world_sys(Vec2::new(c.x, c.high), rect, view);
-    let candle_low_world = data_to_world_sys(Vec2::new(c.x, c.low), rect, view);
+    let candle_world = data_to_world(Vec2::new(c.x, (c.high + c.low) * 0.5), rect, view);
+    let candle_high_world = data_to_world(Vec2::new(c.x, c.high), rect, view);
+    let candle_low_world = data_to_world(Vec2::new(c.x, c.low), rect, view);
 
     // Candle width in world space
     let candle_world_width = candle_data_width * view.scale;
@@ -1615,7 +1662,11 @@ fn spawn_candlestick_tooltip(
 
             // Tooltip
             let change = c.close - c.open;
-            let change_pct = if c.open != 0.0 { (change / c.open) * 100.0 } else { 0.0 };
+            let change_pct = if c.open != 0.0 {
+                (change / c.open) * 100.0
+            } else {
+                0.0
+            };
             let change_str = if change >= 0.0 {
                 format!("+{:.2} (+{:.1}%)", change, change_pct)
             } else {
@@ -1674,12 +1725,15 @@ fn spawn_heatmap_tooltip(
     let usable_width = rect.world_size.x * (1.0 - padding_left - padding_right);
     let usable_height = rect.world_size.y * (1.0 - padding_bottom - padding_top);
     let left_x = rect.world_center.x - rect.world_size.x * 0.5 + rect.world_size.x * padding_left;
-    let bottom_y = rect.world_center.y - rect.world_size.y * 0.5 + rect.world_size.y * padding_bottom;
+    let bottom_y =
+        rect.world_center.y - rect.world_size.y * 0.5 + rect.world_size.y * padding_bottom;
     let right_x = left_x + usable_width;
     let top_y = bottom_y + usable_height;
 
-    if cursor_world.x < left_x || cursor_world.x > right_x
-        || cursor_world.y < bottom_y || cursor_world.y > top_y
+    if cursor_world.x < left_x
+        || cursor_world.x > right_x
+        || cursor_world.y < bottom_y
+        || cursor_world.y > top_y
     {
         return;
     }
@@ -1708,11 +1762,15 @@ fn spawn_heatmap_tooltip(
     let cell_y = bottom_y + usable_height - (row as f32 + 0.5) * cell_height;
 
     // Highlight color based on value
-    let vmin = heatmap.vmin.unwrap_or_else(|| {
-        heatmap.values.iter().cloned().fold(f32::INFINITY, f32::min)
-    });
+    let vmin = heatmap
+        .vmin
+        .unwrap_or_else(|| heatmap.values.iter().cloned().fold(f32::INFINITY, f32::min));
     let vmax = heatmap.vmax.unwrap_or_else(|| {
-        heatmap.values.iter().cloned().fold(f32::NEG_INFINITY, f32::max)
+        heatmap
+            .values
+            .iter()
+            .cloned()
+            .fold(f32::NEG_INFINITY, f32::max)
     });
     let _t = ((value - vmin) / (vmax - vmin).max(0.001)).clamp(0.0, 1.0);
 
@@ -1741,11 +1799,15 @@ fn spawn_heatmap_tooltip(
             // Build tooltip
             let default_row = format!("Row {}", row);
             let default_col = format!("Col {}", col);
-            let row_label = heatmap.row_labels.as_ref()
+            let row_label = heatmap
+                .row_labels
+                .as_ref()
                 .and_then(|l| l.get(row))
                 .map(|s| s.as_str())
                 .unwrap_or(&default_row);
-            let col_label = heatmap.col_labels.as_ref()
+            let col_label = heatmap
+                .col_labels
+                .as_ref()
                 .and_then(|l| l.get(col))
                 .map(|s| s.as_str())
                 .unwrap_or(&default_col);
@@ -1831,7 +1893,8 @@ fn spawn_radial_tooltip(
             if let Some((_idx, label, value, pct)) = found_slice {
                 let tooltip = format!("{}\nValue: {:.1}\n{:.1}%", label, value, pct);
 
-                let highlight_mat = materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.3)));
+                let highlight_mat =
+                    materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.3)));
 
                 commands
                     .spawn((
@@ -1907,7 +1970,8 @@ fn spawn_radial_tooltip(
 
             let tooltip = format!("{}\nValue: {:.2}", axis_name, axis_value);
 
-            let highlight_mat = materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.3)));
+            let highlight_mat =
+                materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.3)));
 
             // Calculate point position on the radar
             let axis_angle = -std::f32::consts::FRAC_PI_2 + best_idx as f32 * angle_step;
@@ -2045,7 +2109,8 @@ fn spawn_3d_tooltip(
             let overlay_layer = RenderLayers::layer((tile_index + 16) % 32);
             let tooltip_text = format!("({:.2}, {:.2}, {:.2})", original.x, original.y, original.z);
 
-            let highlight_mat = materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.6)));
+            let highlight_mat =
+                materials.add(ColorMaterial::from(Color::srgba(1.0, 1.0, 1.0, 0.6)));
 
             commands
                 .spawn((
@@ -2159,14 +2224,22 @@ pub fn update_3d_axis_labels(
         let overlay_layer = RenderLayers::layer((tile.index + 16) % 32);
 
         // Get axis labels (use default if not set)
-        let x_label = axis_info.and_then(|i| i.x_label.clone()).unwrap_or_else(|| "X".to_string());
-        let y_label = axis_info.and_then(|i| i.y_label.clone()).unwrap_or_else(|| "Y".to_string());
-        let z_label = axis_info.and_then(|i| i.z_label.clone()).unwrap_or_else(|| "Z".to_string());
+        let x_label = axis_info
+            .and_then(|i| i.x_label.clone())
+            .unwrap_or_else(|| "X".to_string());
+        let y_label = axis_info
+            .and_then(|i| i.y_label.clone())
+            .unwrap_or_else(|| "Y".to_string());
+        let z_label = axis_info
+            .and_then(|i| i.z_label.clone())
+            .unwrap_or_else(|| "Z".to_string());
 
         // Spawn X axis label
         if let Some(screen_pos) = project_to_screen(x_tip) {
             commands.spawn((
-                AxisLabel3D { tile_index: tile.index },
+                AxisLabel3D {
+                    tile_index: tile.index,
+                },
                 Text2d::new(x_label),
                 TextFont {
                     font_size: 12.0,
@@ -2181,7 +2254,9 @@ pub fn update_3d_axis_labels(
         // Spawn Y axis label
         if let Some(screen_pos) = project_to_screen(y_tip) {
             commands.spawn((
-                AxisLabel3D { tile_index: tile.index },
+                AxisLabel3D {
+                    tile_index: tile.index,
+                },
                 Text2d::new(y_label),
                 TextFont {
                     font_size: 12.0,
@@ -2196,7 +2271,9 @@ pub fn update_3d_axis_labels(
         // Spawn Z axis label
         if let Some(screen_pos) = project_to_screen(z_tip) {
             commands.spawn((
-                AxisLabel3D { tile_index: tile.index },
+                AxisLabel3D {
+                    tile_index: tile.index,
+                },
                 Text2d::new(z_label),
                 TextFont {
                     font_size: 12.0,
@@ -2222,7 +2299,9 @@ pub fn update_3d_axis_labels(
 
                 if let Some(screen_pos) = project_to_screen(tick_pos) {
                     commands.spawn((
-                        AxisLabel3D { tile_index: tile.index },
+                        AxisLabel3D {
+                            tile_index: tile.index,
+                        },
                         Text2d::new(format!("{:.1}", data_x)),
                         TextFont {
                             font_size: 9.0,
@@ -2244,7 +2323,9 @@ pub fn update_3d_axis_labels(
 
                 if let Some(screen_pos) = project_to_screen(tick_pos) {
                     commands.spawn((
-                        AxisLabel3D { tile_index: tile.index },
+                        AxisLabel3D {
+                            tile_index: tile.index,
+                        },
                         Text2d::new(format!("{:.1}", data_y)),
                         TextFont {
                             font_size: 9.0,
@@ -2266,7 +2347,9 @@ pub fn update_3d_axis_labels(
 
                 if let Some(screen_pos) = project_to_screen(tick_pos) {
                     commands.spawn((
-                        AxisLabel3D { tile_index: tile.index },
+                        AxisLabel3D {
+                            tile_index: tile.index,
+                        },
                         Text2d::new(format!("{:.1}", data_z)),
                         TextFont {
                             font_size: 9.0,
@@ -2332,7 +2415,11 @@ pub fn update_tab_bar(
                 Mesh2d(unit.quad.clone()),
                 MeshMaterial2d(bar_mat),
                 Transform {
-                    translation: Vec3::new(0.0, window.height() * 0.5 - margin - tab_bar_height * 0.5, 0.0),
+                    translation: Vec3::new(
+                        0.0,
+                        window.height() * 0.5 - margin - tab_bar_height * 0.5,
+                        0.0,
+                    ),
                     scale: Vec3::new(window.width() - margin * 2.0, tab_bar_height, 1.0),
                     ..default()
                 },

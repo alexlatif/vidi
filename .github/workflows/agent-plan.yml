@@ -1,0 +1,60 @@
+name: agent-plan
+
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: agent-plan-${{ github.repository }}-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    # Run on issue open/edit, OR on comments that are NOT bot commands
+    if: |
+      github.event_name == 'issues' ||
+      (github.event_name == 'issue_comment' &&
+       !contains(github.event.comment.body, 'bot::run') &&
+       !contains(github.event.comment.body, 'bot::merge'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for existing PR
+        id: check_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ISSUE_NUM=${{ github.event.issue.number }}
+          PR=$(gh pr list --head "agent/issue-${ISSUE_NUM}" --json number --jq '.[0].number' || echo "")
+          echo "pr_number=${PR}" >> $GITHUB_OUTPUT
+          echo "has_pr=$([[ -n "$PR" ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: |
+            PLANNING MODE.
+
+            Issue: #${{ github.event.issue.number }}
+            Has existing PR: ${{ steps.check_pr.outputs.has_pr }}
+            PR number: ${{ steps.check_pr.outputs.pr_number }}
+
+            If this is a new issue or issue edit: produce initial plan.
+            If this is a comment on existing conversation: refine the plan based on feedback.
+            If there's already a PR: review what was implemented and suggest refinements.
+
+            CRITICAL: Include issue-specific verification criteria.
+            Follow .claude/rules/planning.md exactly.
+            Do NOT change any code.
+          claude_args: |
+            --permission-mode plan
+            --max-turns 10

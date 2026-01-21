@@ -1,0 +1,64 @@
+name: agent-verify
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  contents: read
+  issues: read
+
+concurrency:
+  group: agent-verify-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@just
+
+      - name: Run standard verification
+        id: verify
+        run: |
+          just verify 2>&1 | tee verify_output.txt
+          echo "status=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Get linked issue
+        id: issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Extract issue number from branch name (agent/issue-N)
+          BRANCH="${{ github.head_ref }}"
+          ISSUE_NUM=$(echo "$BRANCH" | sed -n 's/agent\/issue-\([0-9]*\)/\1/p')
+          echo "number=${ISSUE_NUM}" >> $GITHUB_OUTPUT
+
+          if [[ -n "$ISSUE_NUM" ]]; then
+            gh issue view "$ISSUE_NUM" --json body --jq .body > issue_body.txt
+          fi
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ github.token }}
+          prompt: |
+            VERIFIER MODE.
+
+            Standard verification result: ${{ steps.verify.outputs.status == '0' && 'PASS' || 'FAIL' }}
+            See verify_output.txt for details.
+
+            Linked issue: #${{ steps.issue.outputs.number }}
+            Issue content is in issue_body.txt (if it exists).
+
+            1. Parse the issue for the plan's "Issue-Specific Verification" section
+            2. Run EACH verification item (test, example, command)
+            3. Report results for both standard and issue-specific verification
+            4. Follow .claude/rules/verification.md for report format
+            5. End with VERIFIER: PASS or VERIFIER: FAIL
+          claude_args: |
+            --max-turns 12

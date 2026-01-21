@@ -1,0 +1,93 @@
+{
+  "background": {"r": 0.05, "g": 0.05, "b": 0.09, "a": 1.0},
+  "plots": [
+    {
+      "Heatmap": {
+        "meta": {"title": "Attention Matrix (Viridis)", "description": null},
+        "dims": [8, 8],
+        "values": [
+          1.0, 0.8, 0.6, 0.4, 0.3, 0.2, 0.1, 0.05,
+          0.8, 1.0, 0.7, 0.5, 0.4, 0.3, 0.2, 0.1,
+          0.6, 0.7, 1.0, 0.6, 0.5, 0.4, 0.3, 0.2,
+          0.4, 0.5, 0.6, 1.0, 0.7, 0.5, 0.4, 0.3,
+          0.3, 0.4, 0.5, 0.7, 1.0, 0.6, 0.5, 0.4,
+          0.2, 0.3, 0.4, 0.5, 0.6, 1.0, 0.7, 0.5,
+          0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 1.0, 0.8,
+          0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.8, 1.0
+        ],
+        "vmin": null,
+        "vmax": null,
+        "row_labels": ["Token 1", "Token 2", "Token 3", "Token 4", "Token 5", "Token 6", "Token 7", "Token 8"],
+        "col_labels": ["Token 1", "Token 2", "Token 3", "Token 4", "Token 5", "Token 6", "Token 7", "Token 8"],
+        "show_values": false,
+        "colormap": "Viridis"
+      }
+    },
+    {
+      "Heatmap": {
+        "meta": {"title": "Correlation (Coolwarm)", "description": null},
+        "dims": [6, 6],
+        "values": [
+          1.0, 0.7, 0.3, -0.2, -0.5, -0.8,
+          0.7, 1.0, 0.5, 0.0, -0.3, -0.6,
+          0.3, 0.5, 1.0, 0.4, 0.1, -0.2,
+          -0.2, 0.0, 0.4, 1.0, 0.6, 0.3,
+          -0.5, -0.3, 0.1, 0.6, 1.0, 0.7,
+          -0.8, -0.6, -0.2, 0.3, 0.7, 1.0
+        ],
+        "vmin": -1.0,
+        "vmax": 1.0,
+        "row_labels": ["Var A", "Var B", "Var C", "Var D", "Var E", "Var F"],
+        "col_labels": ["Var A", "Var B", "Var C", "Var D", "Var E", "Var F"],
+        "show_values": true,
+        "colormap": "Coolwarm"
+      }
+    },
+    {
+      "Heatmap": {
+        "meta": {"title": "Feature Map (Plasma)", "description": null},
+        "dims": [10, 10],
+        "values": [
+          0.1, 0.2, 0.3, 0.4, 0.5, 0.5, 0.4, 0.3, 0.2, 0.1,
+          0.2, 0.4, 0.5, 0.6, 0.7, 0.7, 0.6, 0.5, 0.4, 0.2,
+          0.3, 0.5, 0.7, 0.8, 0.9, 0.9, 0.8, 0.7, 0.5, 0.3,
+          0.4, 0.6, 0.8, 0.95, 1.0, 1.0, 0.95, 0.8, 0.6, 0.4,
+          0.5, 0.7, 0.9, 1.0, 1.0, 1.0, 1.0, 0.9, 0.7, 0.5,
+          0.5, 0.7, 0.9, 1.0, 1.0, 1.0, 1.0, 0.9, 0.7, 0.5,
+          0.4, 0.6, 0.8, 0.95, 1.0, 1.0, 0.95, 0.8, 0.6, 0.4,
+          0.3, 0.5, 0.7, 0.8, 0.9, 0.9, 0.8, 0.7, 0.5, 0.3,
+          0.2, 0.4, 0.5, 0.6, 0.7, 0.7, 0.6, 0.5, 0.4, 0.2,
+          0.1, 0.2, 0.3, 0.4, 0.5, 0.5, 0.4, 0.3, 0.2, 0.1
+        ],
+        "vmin": null,
+        "vmax": null,
+        "row_labels": null,
+        "col_labels": null,
+        "show_values": false,
+        "colormap": "Plasma"
+      }
+    },
+    {
+      "Heatmap": {
+        "meta": {"title": "RdBu Diverging", "description": null},
+        "dims": [5, 5],
+        "values": [
+          -1.0, -0.5, 0.0, 0.5, 1.0,
+          -0.8, -0.4, 0.0, 0.4, 0.8,
+          -0.6, -0.3, 0.0, 0.3, 0.6,
+          -0.4, -0.2, 0.0, 0.2, 0.4,
+          -0.2, -0.1, 0.0, 0.1, 0.2
+        ],
+        "vmin": -1.0,
+        "vmax": 1.0,
+        "row_labels": null,
+        "col_labels": null,
+        "show_values": false,
+        "colormap": "RdBu"
+      }
+    }
+  ],
+  "columns": 2,
+  "tabs": [],
+  "active_tab": 0
+}
