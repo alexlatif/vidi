@@ -3,14 +3,14 @@ members = [".", "vidi-server", "vidi-server/dashboard-template"]
 resolver = "3"
 
 [package]
-name = "vidi"
-version = "0.1.1"
+name = "vidi-charts"
+version = "0.1.0"
 edition = "2024"
 description = "High-performance data visualization library for Rust, powered by Bevy"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/alexlatif/vidi"
 homepage = "https://github.com/alexlatif/vidi"
-documentation = "https://docs.rs/vidi"
+documentation = "https://docs.rs/vidi-charts"
 readme = "README.md"
 keywords = ["visualization", "plotting", "charts", "bevy", "wasm"]
 categories = ["visualization", "graphics", "game-development", "wasm"]

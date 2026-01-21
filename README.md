@@ -23,8 +23,10 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-vidi = "0.1"
+vidi-charts = "0.1"
 ```
+
+Note: The crate is published as `vidi-charts` on crates.io (the name `vidi` was taken).
 
 Create a simple dashboard:
 
